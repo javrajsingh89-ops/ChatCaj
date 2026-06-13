@@ -9,13 +9,9 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
@@ -26,164 +22,197 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Create tables if not exists
+// Create tables
 const initDatabase = async () => {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) NOT NULL,
-        text TEXT NOT NULL,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      CREATE TABLE IF NOT EXISTS chats (
+        code VARCHAR(6) PRIMARY KEY,
+        created_at BIGINT NOT NULL,
+        activated BOOLEAN DEFAULT false,
+        users TEXT[] DEFAULT '{}',
+        pinned_msg_id TEXT
       );
       
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        is_online BOOLEAN DEFAULT false,
-        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        chat_code VARCHAR(6) REFERENCES chats(code) ON DELETE CASCADE,
+        type VARCHAR(10) DEFAULT 'msg',
+        sender VARCHAR(50),
+        text TEXT,
+        time BIGINT,
+        edited BOOLEAN DEFAULT false,
+        deleted BOOLEAN DEFAULT false,
+        original_text TEXT,
+        history TEXT[]
       );
     `);
     console.log('✅ Database initialized');
   } catch (err) {
-    console.error('Database init error:', err);
+    console.error('Database init error:', err.message);
   }
 };
 initDatabase();
 
-// API Routes
-app.get('/api/messages', async (req, res) => {
+// ============ API ROUTES ============
+
+// Get chat by code
+app.get('/api/chat/:code', async (req, res) => {
+  const { code } = req.params;
   try {
-    const result = await pool.query(
-      'SELECT * FROM messages ORDER BY timestamp ASC LIMIT 100'
-    );
-    res.json(result.rows);
+    const chat = await pool.query('SELECT * FROM chats WHERE code = $1', [code]);
+    if (chat.rows.length === 0) return res.status(404).json({ error: 'Chat not found' });
+    
+    const messages = await pool.query('SELECT * FROM messages WHERE chat_code = $1 ORDER BY time ASC', [code]);
+    res.json({ chat: chat.rows[0], messages: messages.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/users', async (req, res) => {
+// Create new chat
+app.post('/api/chat/create', async (req, res) => {
+  const { code, username, created_at } = req.body;
   try {
-    const result = await pool.query(
-      'SELECT username, is_online FROM users ORDER BY username'
+    await pool.query(
+      'INSERT INTO chats (code, created_at, activated, users) VALUES ($1, $2, $3, $4)',
+      [code, created_at, false, [username]]
     );
-    res.json(result.rows);
+    res.json({ success: true, code });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Socket.io connection handling
+// Join chat
+app.post('/api/chat/join', async (req, res) => {
+  const { code, username } = req.body;
+  try {
+    const chat = await pool.query('SELECT * FROM chats WHERE code = $1', [code]);
+    if (chat.rows.length === 0) return res.status(404).json({ error: 'Code not found' });
+    
+    const chatData = chat.rows[0];
+    const age = Date.now() - chatData.created_at;
+    
+    if (!chatData.activated && age > 24 * 60 * 60 * 1000) {
+      return res.status(410).json({ error: 'Code expired' });
+    }
+    
+    let users = chatData.users || [];
+    if (!users.includes(username)) users.push(username);
+    
+    const activated = chatData.activated || (users.length >= 2);
+    
+    await pool.query(
+      'UPDATE chats SET users = $1, activated = $2 WHERE code = $3',
+      [users, activated, code]
+    );
+    
+    res.json({ success: true, chat: { ...chatData, users, activated } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ SOCKET.IO ============
 io.on('connection', (socket) => {
-  console.log('🔌 New user connected:', socket.id);
-  
+  console.log('🔌 User connected:', socket.id);
+  let currentRoom = null;
   let currentUsername = null;
   
-  // User joins chat
-  socket.on('user join', async (username) => {
+  socket.on('join chat', async ({ code, username }) => {
+    currentRoom = code;
     currentUsername = username;
+    socket.join(code);
     
+    // Send existing messages
+    const messages = await pool.query(
+      'SELECT * FROM messages WHERE chat_code = $1 ORDER BY time ASC',
+      [code]
+    );
+    socket.emit('chat history', messages.rows);
+    
+    // Notify others
+    socket.to(code).emit('user joined', username);
+    
+    // Update user list
+    const chat = await pool.query('SELECT users FROM chats WHERE code = $1', [code]);
+    io.to(code).emit('users update', chat.rows[0]?.users || []);
+  });
+  
+  socket.on('new message', async (data) => {
+    const { chatCode, message } = data;
     try {
-      // Add or update user in database
       await pool.query(
-        'INSERT INTO users (username, is_online, last_seen) VALUES ($1, true, NOW()) ON CONFLICT (username) DO UPDATE SET is_online = true, last_seen = NOW()',
-        [username]
+        'INSERT INTO messages (id, chat_code, type, sender, text, time, edited, deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [message.id, chatCode, message.type, message.sender, message.text, message.time, false, false]
       );
-      
-      // Send last 50 messages to new user
-      const messages = await pool.query(
-        'SELECT * FROM messages ORDER BY timestamp DESC LIMIT 50'
-      );
-      socket.emit('chat history', messages.rows.reverse());
-      
-      // Broadcast updated user list to everyone
-      const users = await pool.query('SELECT username, is_online FROM users WHERE is_online = true');
-      io.emit('users list', users.rows);
-      
-      // Announce new user
-      io.emit('system message', { 
-        text: `${username} è entrato nella chat`,
-        timestamp: new Date()
-      });
-      
+      io.to(chatCode).emit('message received', message);
     } catch (err) {
-      console.error('Error in user join:', err);
+      console.error('Save message error:', err);
     }
   });
   
-  // Handle new message
-  socket.on('chat message', async (data) => {
+  socket.on('edit message', async ({ chatCode, messageId, newText, username }) => {
     try {
-      const { username, text } = data;
+      const msg = await pool.query('SELECT * FROM messages WHERE id = $1 AND chat_code = $2', [messageId, chatCode]);
+      if (msg.rows.length === 0) return;
       
-      // Save to database
-      const result = await pool.query(
-        'INSERT INTO messages (username, text, timestamp) VALUES ($1, $2, NOW()) RETURNING *',
-        [username, text]
+      const originalText = msg.rows[0].original_text || msg.rows[0].text;
+      const history = msg.rows[0].history || [];
+      history.push({ type: 'edited', text: msg.rows[0].text, time: Date.now() });
+      
+      await pool.query(
+        'UPDATE messages SET text = $1, edited = true, original_text = $2, history = $3 WHERE id = $4',
+        [newText, originalText, history, messageId]
       );
-      
-      // Broadcast to all users
-      io.emit('chat message', {
-        id: result.rows[0].id,
-        username: username,
-        text: text,
-        timestamp: result.rows[0].timestamp
-      });
-      
+      io.to(chatCode).emit('message edited', { messageId, newText, username });
     } catch (err) {
-      console.error('Error saving message:', err);
-      socket.emit('error', { message: 'Failed to send message' });
+      console.error('Edit error:', err);
     }
   });
   
-  // User is typing
-  socket.on('typing', (username) => {
-    socket.broadcast.emit('user typing', username);
+  socket.on('delete message', async ({ chatCode, messageId, username }) => {
+    try {
+      const msg = await pool.query('SELECT * FROM messages WHERE id = $1', [messageId]);
+      if (msg.rows.length === 0) return;
+      
+      const originalText = msg.rows[0].original_text || msg.rows[0].text;
+      const history = msg.rows[0].history || [];
+      history.push({ type: 'deleted', text: msg.rows[0].text, time: Date.now() });
+      
+      await pool.query(
+        'UPDATE messages SET deleted = true, original_text = $1, history = $2, text = $3 WHERE id = $4',
+        [originalText, history, '[deleted]', messageId]
+      );
+      io.to(chatCode).emit('message deleted', { messageId, username });
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   });
   
-  // User stops typing
-  socket.on('stop typing', () => {
-    socket.broadcast.emit('user stop typing');
+  socket.on('pin message', async ({ chatCode, messageId }) => {
+    await pool.query('UPDATE chats SET pinned_msg_id = $1 WHERE code = $2', [messageId, chatCode]);
+    io.to(chatCode).emit('message pinned', messageId);
   });
   
-  // Handle disconnect
-  socket.on('disconnect', async () => {
+  socket.on('typing', ({ chatCode, username }) => {
+    socket.to(chatCode).emit('user typing', username);
+  });
+  
+  socket.on('stop typing', ({ chatCode }) => {
+    socket.to(chatCode).emit('user stop typing');
+  });
+  
+  socket.on('disconnect', () => {
     console.log('🔌 User disconnected:', socket.id);
-    
-    if (currentUsername) {
-      try {
-        // Mark user as offline
-        await pool.query(
-          'UPDATE users SET is_online = false, last_seen = NOW() WHERE username = $1',
-          [currentUsername]
-        );
-        
-        // Update user list for everyone
-        const users = await pool.query('SELECT username, is_online FROM users WHERE is_online = true');
-        io.emit('users list', users.rows);
-        
-        // Announce user left
-        io.emit('system message', {
-          text: `${currentUsername} ha lasciato la chat`,
-          timestamp: new Date()
-        });
-        
-      } catch (err) {
-        console.error('Error in disconnect:', err);
-      }
+    if (currentRoom && currentUsername) {
+      io.to(currentRoom).emit('user left', currentUsername);
     }
   });
 });
 
-// Serve frontend
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 http://localhost:${PORT}`);
 });
