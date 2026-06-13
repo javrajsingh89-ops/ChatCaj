@@ -66,6 +66,7 @@ app.get('/api/chat/:code', async (req, res) => {
     const messages = await pool.query('SELECT * FROM messages WHERE chat_code = $1 ORDER BY time ASC', [code]);
     res.json({ chat: chat.rows[0], messages: messages.rows });
   } catch (err) {
+    console.error('GET chat error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -75,11 +76,12 @@ app.post('/api/chat/create', async (req, res) => {
   const { code, username, created_at } = req.body;
   try {
     await pool.query(
-      'INSERT INTO chats (code, created_at, activated, users) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO chats (code, created_at, activated, users) VALUES ($1, $2, $3, $4) ON CONFLICT (code) DO NOTHING',
       [code, created_at, false, [username]]
     );
     res.json({ success: true, code });
   } catch (err) {
+    console.error('Create chat error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -108,8 +110,137 @@ app.post('/api/chat/join', async (req, res) => {
       [users, activated, code]
     );
     
-    res.json({ success: true, chat: { ...chatData, users, activated } });
+    // Fetch updated chat
+    const updatedChat = await pool.query('SELECT * FROM chats WHERE code = $1', [code]);
+    
+    res.json({ success: true, chat: updatedChat.rows[0] });
   } catch (err) {
+    console.error('Join chat error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ DELETE CHAT ============
+app.delete('/api/chat/:code', async (req, res) => {
+  const { code } = req.params;
+  const { username } = req.body;
+  
+  try {
+    // Verifica che l'utente sia l'owner (primo utente nella lista)
+    const chat = await pool.query('SELECT * FROM chats WHERE code = $1', [code]);
+    if (chat.rows.length === 0) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    const chatData = chat.rows[0];
+    const isOwner = chatData.users && chatData.users[0] === username;
+    
+    if (!isOwner) {
+      return res.status(403).json({ error: 'Only chat creator can delete this chat' });
+    }
+    
+    // Elimina chat (messages vengono eliminati automaticamente per CASCADE)
+    await pool.query('DELETE FROM chats WHERE code = $1', [code]);
+    
+    // Notifica tutti gli utenti nella chat via socket
+    io.to(code).emit('chat deleted', { code, by: username });
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete chat error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Edit message
+app.put('/api/message/:messageId', async (req, res) => {
+  const { messageId } = req.params;
+  const { newText, username, chatCode } = req.body;
+  
+  try {
+    const msg = await pool.query('SELECT * FROM messages WHERE id = $1', [messageId]);
+    if (msg.rows.length === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    if (msg.rows[0].sender !== username) {
+      return res.status(403).json({ error: 'Only message author can edit' });
+    }
+    
+    const originalText = msg.rows[0].original_text || msg.rows[0].text;
+    const history = msg.rows[0].history || [];
+    history.push({ type: 'edited', text: msg.rows[0].text, time: Date.now() });
+    
+    await pool.query(
+      'UPDATE messages SET text = $1, edited = true, original_text = $2, history = $3 WHERE id = $4',
+      [newText, originalText, history, messageId]
+    );
+    
+    io.to(chatCode).emit('message edited', { messageId, newText, username });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Edit message error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete message
+app.delete('/api/message/:messageId', async (req, res) => {
+  const { messageId } = req.params;
+  const { username, chatCode } = req.body;
+  
+  try {
+    const msg = await pool.query('SELECT * FROM messages WHERE id = $1', [messageId]);
+    if (msg.rows.length === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    if (msg.rows[0].sender !== username) {
+      return res.status(403).json({ error: 'Only message author can delete' });
+    }
+    
+    const originalText = msg.rows[0].original_text || msg.rows[0].text;
+    const history = msg.rows[0].history || [];
+    history.push({ type: 'deleted', text: msg.rows[0].text, time: Date.now() });
+    
+    await pool.query(
+      'UPDATE messages SET deleted = true, original_text = $1, history = $2, text = $3 WHERE id = $4',
+      [originalText, history, '[deleted]', messageId]
+    );
+    
+    io.to(chatCode).emit('message deleted', { messageId, username });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete message error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pin message
+app.post('/api/chat/:code/pin', async (req, res) => {
+  const { code } = req.params;
+  const { messageId } = req.body;
+  
+  try {
+    await pool.query('UPDATE chats SET pinned_msg_id = $1 WHERE code = $2', [messageId, code]);
+    io.to(code).emit('message pinned', messageId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Pin message error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unpin message
+app.delete('/api/chat/:code/pin', async (req, res) => {
+  const { code } = req.params;
+  
+  try {
+    await pool.query('UPDATE chats SET pinned_msg_id = NULL WHERE code = $1', [code]);
+    io.to(code).emit('message unpinned');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Unpin message error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -124,32 +255,41 @@ io.on('connection', (socket) => {
     currentRoom = code;
     currentUsername = username;
     socket.join(code);
+    console.log(`📢 User ${username} joined chat ${code}`);
     
-    // Send existing messages
-    const messages = await pool.query(
-      'SELECT * FROM messages WHERE chat_code = $1 ORDER BY time ASC',
-      [code]
-    );
-    socket.emit('chat history', messages.rows);
-    
-    // Notify others
-    socket.to(code).emit('user joined', username);
-    
-    // Update user list
-    const chat = await pool.query('SELECT users FROM chats WHERE code = $1', [code]);
-    io.to(code).emit('users update', chat.rows[0]?.users || []);
+    try {
+      // Send existing messages
+      const messages = await pool.query(
+        'SELECT * FROM messages WHERE chat_code = $1 ORDER BY time ASC',
+        [code]
+      );
+      socket.emit('chat history', messages.rows);
+      
+      // Notify others
+      socket.to(code).emit('user joined', username);
+      
+      // Update user list
+      const chat = await pool.query('SELECT users FROM chats WHERE code = $1', [code]);
+      if (chat.rows[0]) {
+        io.to(code).emit('users update', chat.rows[0].users || []);
+      }
+    } catch (err) {
+      console.error('Join chat socket error:', err);
+    }
   });
   
   socket.on('new message', async (data) => {
     const { chatCode, message } = data;
     try {
       await pool.query(
-        'INSERT INTO messages (id, chat_code, type, sender, text, time, edited, deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        `INSERT INTO messages (id, chat_code, type, sender, text, time, edited, deleted) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [message.id, chatCode, message.type, message.sender, message.text, message.time, false, false]
       );
       io.to(chatCode).emit('message received', message);
     } catch (err) {
       console.error('Save message error:', err);
+      socket.emit('error', { message: 'Failed to save message' });
     }
   });
   
@@ -157,6 +297,11 @@ io.on('connection', (socket) => {
     try {
       const msg = await pool.query('SELECT * FROM messages WHERE id = $1 AND chat_code = $2', [messageId, chatCode]);
       if (msg.rows.length === 0) return;
+      
+      if (msg.rows[0].sender !== username) {
+        socket.emit('error', { message: 'Not authorized to edit this message' });
+        return;
+      }
       
       const originalText = msg.rows[0].original_text || msg.rows[0].text;
       const history = msg.rows[0].history || [];
@@ -177,6 +322,11 @@ io.on('connection', (socket) => {
       const msg = await pool.query('SELECT * FROM messages WHERE id = $1', [messageId]);
       if (msg.rows.length === 0) return;
       
+      if (msg.rows[0].sender !== username) {
+        socket.emit('error', { message: 'Not authorized to delete this message' });
+        return;
+      }
+      
       const originalText = msg.rows[0].original_text || msg.rows[0].text;
       const history = msg.rows[0].history || [];
       history.push({ type: 'deleted', text: msg.rows[0].text, time: Date.now() });
@@ -192,8 +342,12 @@ io.on('connection', (socket) => {
   });
   
   socket.on('pin message', async ({ chatCode, messageId }) => {
-    await pool.query('UPDATE chats SET pinned_msg_id = $1 WHERE code = $2', [messageId, chatCode]);
-    io.to(chatCode).emit('message pinned', messageId);
+    try {
+      await pool.query('UPDATE chats SET pinned_msg_id = $1 WHERE code = $2', [messageId, chatCode]);
+      io.to(chatCode).emit('message pinned', messageId);
+    } catch (err) {
+      console.error('Pin error:', err);
+    }
   });
   
   socket.on('typing', ({ chatCode, username }) => {
@@ -212,7 +366,19 @@ io.on('connection', (socket) => {
   });
 });
 
+// Serve frontend
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handler globale
+app.use((err, req, res, next) => {
+  console.error('Global error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📍 http://localhost:${PORT}`);
 });
