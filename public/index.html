@@ -875,6 +875,7 @@
     <div id="chat-info-users"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-chat-info')">Close</button>
+      <button class="btn btn-danger" id="delete-chat-btn" onclick="deleteCurrentChat(); closeModal('modal-chat-info')">🗑️ Delete Chat</button>
       <button class="btn btn-danger" onclick="leaveChat(); closeModal('modal-chat-info')">Leave Chat</button>
     </div>
   </div>
@@ -1699,6 +1700,44 @@ function leaveChat() {
   showScreen('home');
   renderRecentChats();
 }
+  // ============ DELETE CHAT (Owner only) ============
+function deleteCurrentChat() {
+  if (!state.currentChat) return;
+  
+  const chat = state.chats[state.currentChat];
+  const isOwner = chat.users && chat.users[0] === state.username;
+  
+  if (!isOwner) {
+    showToast('❌ Only the chat creator can delete this chat', 'error');
+    return;
+  }
+  
+  if (confirm('⚠️ Delete this chat permanently? All messages will be lost. This cannot be undone.')) {
+    fetch(`/api/chat/${state.currentChat}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: state.username })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        // Rimuovi dalla lista locale
+        delete state.chats[state.currentChat];
+        saveState();
+        state.currentChat = null;
+        showToast('Chat deleted successfully', 'success');
+        showScreen('home');
+        renderRecentChats();
+      } else {
+        showToast('Error deleting chat: ' + data.error, 'error');
+      }
+    })
+    .catch(err => {
+      console.error('Delete chat error:', err);
+      showToast('Failed to delete chat', 'error');
+    });
+  }
+}
 
 // ============ CHAT INFO ============
 function showChatInfo() {
@@ -1707,11 +1746,22 @@ function showChatInfo() {
   if (!chat) return;
   const status = chat.activated ? 'Permanent (activated)' : 'Pending (24h expiry)';
   const created = new Date(chat.created).toLocaleString();
+  
+  // Controlla se l'utente è il creatore (owner)
+  const isOwner = chat.users && chat.users[0] === state.username;
+  
   document.getElementById('chat-info-text').innerHTML =
     `<strong>Code:</strong> ${state.currentChat}<br><strong>Status:</strong> ${status}<br><strong>Created:</strong> ${created}<br><strong>Messages:</strong> ${chat.messages.filter(m=>m.type==='msg').length}`;
   document.getElementById('chat-info-users').innerHTML =
     '<div style="margin-top:12px"><strong style="font-size:0.82rem;color:var(--text3)">MEMBERS</strong><div class="dash-users" style="margin-top:8px">' +
     chat.users.map(u => `<div class="dash-user-pill"><span class="dot"></span>${escHtml(u)}</div>`).join('') + '</div></div>';
+  
+  // Mostra o nascondi il pulsante Delete Chat in base a isOwner
+  const deleteBtn = document.getElementById('delete-chat-btn');
+  if (deleteBtn) {
+    deleteBtn.style.display = isOwner ? 'flex' : 'none';
+  }
+  
   openModal('modal-chat-info');
 }
 
