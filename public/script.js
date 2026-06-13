@@ -1,9 +1,9 @@
 const socket = io();
 
 let currentUsername = null;
-let messageSound = new Audio('/notification.mp3'); // Optional: add notification sound
+let messageSound = new Audio('/notification.mp3'); // Optional
 
-// DOM elements
+// DOM elements - usa gli ID che già hai nel tuo HTML
 const loginScreen = document.getElementById('login-screen');
 const chatScreen = document.getElementById('chat-screen');
 const usernameInput = document.getElementById('username-input');
@@ -30,8 +30,8 @@ loginBtn.addEventListener('click', () => {
   currentUserSpan.textContent = username;
   socket.emit('user join', username);
   
-  loginScreen.classList.add('hidden');
-  chatScreen.classList.remove('hidden');
+  loginScreen.style.display = 'none';
+  chatScreen.style.display = 'flex';
   messageInput.focus();
 });
 
@@ -101,18 +101,18 @@ socket.on('users list', (users) => {
 socket.on('user typing', (username) => {
   if (username !== currentUsername) {
     typingIndicator.textContent = `${username} sta scrivendo...`;
-    typingIndicator.classList.remove('hidden');
+    typingIndicator.style.display = 'block';
     
     setTimeout(() => {
       if (typingIndicator.textContent === `${username} sta scrivendo...`) {
-        typingIndicator.classList.add('hidden');
+        typingIndicator.style.display = 'none';
       }
     }, 2000);
   }
 });
 
 socket.on('user stop typing', () => {
-  typingIndicator.classList.add('hidden');
+  typingIndicator.style.display = 'none';
 });
 
 // Error handling
@@ -169,7 +169,8 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Prevent XSS
+// Make sure your chat screen starts hidden
 window.addEventListener('load', () => {
+  chatScreen.style.display = 'none';
   console.log('ChatCaj ready!');
 });
