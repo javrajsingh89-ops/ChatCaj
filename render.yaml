@@ -1,7 +1,20 @@
 services:
   - type: web
     name: chatcaj
-    runtime: node
-    plan: free
+    env: node
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chatcaj-db
+          property: connectionString
+    plan: free
+
+databases:
+  - name: chatcaj-db
+    databaseName: chatcaj
+    user: chatcaj_user
+    plan: free
