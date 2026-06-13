@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ChatCaj — Private Chats</title>
+<script src="/socket.io/socket.io.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
@@ -729,7 +730,7 @@
   <div class="chat-input-area">
     <div class="chat-input-wrap">
       <textarea id="chat-input" placeholder="Message..." rows="1"
-        onkeydown="handleInputKey(event)" oninput="autoResize(this)"></textarea>
+        onkeydown="handleInputKey(event)" oninput="autoResize(this); onMessageInput()"></textarea>
       <button class="send-btn" onclick="sendMessage()" title="Send">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
       </button>
@@ -913,6 +914,9 @@ let state = {
   ctxMsgId: null
 };
 
+// ============ SOCKET.IO ============
+let socket = null;
+
 // ============ INIT ============
 function init() {
   loadState();
@@ -1037,17 +1041,41 @@ let currentCode = null;
 function openNewChat() {
   currentCode = genCode();
   const now = Date.now();
-  state.chats[currentCode] = {
-    created: now,
-    activated: false,
-    users: [state.username],
-    messages: [],
-    pinnedMsg: null
-  };
-  saveState();
-  document.getElementById('new-code').textContent = currentCode;
-  document.getElementById('new-code-expire').textContent = 'Expires in 24 hours if unused';
-  openModal('modal-new-chat');
+  
+  // Chiamata al backend per salvare il codice
+  fetch('/api/chat/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      code: currentCode, 
+      username: state.username, 
+      created_at: now 
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      // Salva anche in locale per i "recent chats"
+      state.chats[currentCode] = {
+        created: now,
+        activated: false,
+        users: [state.username],
+        messages: [],
+        pinnedMsg: null
+      };
+      saveState();
+      
+      document.getElementById('new-code').textContent = currentCode;
+      document.getElementById('new-code-expire').textContent = 'Expires in 24 hours if unused';
+      openModal('modal-new-chat');
+    } else {
+      showToast('Error creating chat: ' + data.error, 'error');
+    }
+  })
+  .catch(err => {
+    console.error('Create chat error:', err);
+    showToast('Failed to create chat. Server error.', 'error');
+  });
 }
 
 function genCode() {
@@ -1080,7 +1108,7 @@ function joinChat() {
   const code = document.getElementById('join-code-input').value.trim();
   const errEl = document.getElementById('join-error');
 
-  // SPECIAL CODE
+  // Special admin code
   if (code === '121110') {
     closeModal('modal-join-chat');
     renderDashboard();
@@ -1090,29 +1118,200 @@ function joinChat() {
 
   if (code.length !== 6) {
     errEl.textContent = 'Please enter a 6-digit code.';
-    errEl.classList.add('show'); return;
+    errEl.classList.add('show'); 
+    return;
   }
 
-  const chat = state.chats[code];
-  if (!chat) {
-    errEl.textContent = 'Code not found. Check the code and try again.';
-    errEl.classList.add('show'); return;
-  }
-
-  // Check if pending (not activated) and expired
-  if (!chat.activated) {
-    const age = Date.now() - chat.created;
-    if (age > 24 * 60 * 60 * 1000) {
-      errEl.textContent = 'This code has expired.';
+  // Chiamata al backend per verificare e unirsi al chat
+  fetch('/api/chat/join', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      code: code, 
+      username: state.username 
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.error) {
+      if (data.error === 'Code expired') {
+        errEl.textContent = 'This code has expired.';
+      } else if (data.error === 'Code not found') {
+        errEl.textContent = 'Code not found. Check the code and try again.';
+      } else {
+        errEl.textContent = data.error;
+      }
       errEl.classList.add('show');
-      delete state.chats[code];
-      saveState(); return;
+    } else {
+      errEl.classList.remove('show');
+      closeModal('modal-join-chat');
+      
+      // Salva localmente per i recent chats
+      if (!state.chats[code]) {
+        state.chats[code] = {
+          created: data.chat.created_at,
+          activated: data.chat.activated,
+          users: data.chat.users,
+          messages: [],
+          pinnedMsg: null
+        };
+        saveState();
+      }
+      
+      // Entra nella chat
+      enterChat(code, false);
     }
-  }
+  })
+  .catch(err => {
+    console.error('Join chat error:', err);
+    errEl.textContent = 'Error connecting to server. Please try again.';
+    errEl.classList.add('show');
+  });
+}
 
-  errEl.classList.remove('show');
-  closeModal('modal-join-chat');
-  enterChat(code, false);
+// ============ SOCKET.IO CONNECTION ============
+function connectToChatRoom(code) {
+  // Disconnetti socket precedente se esiste
+  if (socket) {
+    socket.disconnect();
+  }
+  
+  socket = io();
+  
+  socket.emit('join chat', { 
+    code: code, 
+    username: state.username 
+  });
+  
+  // Ricevi storico messaggi
+  socket.on('chat history', (messages) => {
+    const chat = state.chats[code];
+    if (chat) {
+      chat.messages = messages;
+      saveState();
+      renderMessages();
+      scrollToBottom();
+    }
+  });
+  
+  // Ricevi nuovo messaggio in tempo reale
+  socket.on('message received', (message) => {
+    const chat = state.chats[code];
+    if (chat && state.currentChat === code) {
+      chat.messages.push(message);
+      saveState();
+      renderMessages();
+      scrollToBottom();
+    } else if (chat) {
+      chat.messages.push(message);
+      saveState();
+    }
+  });
+  
+  // Messaggio editato
+  socket.on('message edited', ({ messageId, newText, username }) => {
+    const chat = state.chats[code];
+    if (chat) {
+      const msg = chat.messages.find(m => m.id === messageId);
+      if (msg) {
+        msg.text = newText;
+        msg.edited = true;
+        saveState();
+        if (state.currentChat === code) {
+          renderMessages();
+        }
+      }
+    }
+  });
+  
+  // Messaggio cancellato
+  socket.on('message deleted', ({ messageId, username }) => {
+    const chat = state.chats[code];
+    if (chat) {
+      const msg = chat.messages.find(m => m.id === messageId);
+      if (msg) {
+        msg.deleted = true;
+        msg.text = '[deleted]';
+        saveState();
+        if (state.currentChat === code) {
+          renderMessages();
+        }
+      }
+    }
+  });
+  
+  // Aggiornamento lista utenti
+  socket.on('users update', (users) => {
+    const chat = state.chats[code];
+    if (chat) {
+      chat.users = users;
+      saveState();
+      if (state.currentChat === code) {
+        renderUsersBar();
+        const subEl = document.getElementById('chat-header-sub');
+        if (subEl) {
+          subEl.textContent = users.length + ' member' + (users.length !== 1 ? 's' : '');
+        }
+      }
+    }
+  });
+  
+  // Utente entrato
+  socket.on('user joined', (username) => {
+    if (username !== state.username) {
+      addSystemMsg(code, username + ' joined the chat.');
+    }
+  });
+  
+  // Utente uscito
+  socket.on('user left', (username) => {
+    addSystemMsg(code, username + ' left the chat.');
+  });
+  
+  // Indicatore di scrittura
+  socket.on('user typing', (username) => {
+    if (username !== state.username) {
+      showTypingIndicator(username);
+    }
+  });
+  
+  socket.on('user stop typing', () => {
+    hideTypingIndicator();
+  });
+}
+
+function showTypingIndicator(username) {
+  let indicator = document.getElementById('typing-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'typing-indicator';
+    indicator.style.cssText = 'text-align:center;font-size:0.75rem;color:var(--text3);padding:6px 0;font-style:italic;';
+    const messagesContainer = document.getElementById('chat-messages');
+    if (messagesContainer) messagesContainer.appendChild(indicator);
+  }
+  indicator.textContent = username + ' is typing...';
+  indicator.style.display = 'block';
+}
+
+function hideTypingIndicator() {
+  const indicator = document.getElementById('typing-indicator');
+  if (indicator) indicator.style.display = 'none';
+}
+
+function onMessageInput() {
+  if (socket && state.currentChat) {
+    socket.emit('typing', { 
+      chatCode: state.currentChat, 
+      username: state.username 
+    });
+    
+    clearTimeout(window.typingTimeout);
+    window.typingTimeout = setTimeout(() => {
+      if (socket && state.currentChat) {
+        socket.emit('stop typing', { chatCode: state.currentChat });
+      }
+    }, 1000);
+  }
 }
 
 // ============ ENTER CHAT ============
@@ -1164,6 +1363,9 @@ function enterChat(code, isCreator) {
     renderMessages();
   }
 
+  // Connect to socket for real-time updates
+  connectToChatRoom(code);
+  
   showScreen('chat');
 }
 
@@ -1274,30 +1476,42 @@ function sendMessage() {
   const text = input.value.trim();
   if (!text || !state.currentChat) return;
 
-  const chat = state.chats[state.currentChat];
-  if (!chat) return;
-
   const msg = {
     id: msgId(),
     type: 'msg',
     sender: state.username,
-    text,
+    text: text,
     time: Date.now(),
     edited: false,
     deleted: false,
     originalText: null,
     history: []
   };
-  chat.messages.push(msg);
-  saveState();
-
+  
+  // Invia via socket se connesso
+  if (socket && state.currentChat) {
+    socket.emit('new message', { 
+      chatCode: state.currentChat, 
+      message: msg 
+    });
+  }
+  
+  // Aggiungi localmente per feedback immediato
+  const chat = state.chats[state.currentChat];
+  if (chat) {
+    chat.messages.push(msg);
+    saveState();
+    renderMessages();
+    scrollToBottom();
+  }
+  
   input.value = '';
   input.style.height = 'auto';
-
-  // Append only
-  const container = document.getElementById('chat-messages');
-  container.appendChild(buildMsgEl(msg));
-  container.scrollTop = container.scrollHeight;
+  
+  // Notifica stop typing
+  if (socket) {
+    socket.emit('stop typing', { chatCode: state.currentChat });
+  }
 }
 
 function handleInputKey(e) {
@@ -1657,6 +1871,11 @@ function showToast(msg, type) {
   el.className = 'show' + (type ? ' ' + type : '');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.className = '', 2200);
+}
+
+function scrollToBottom() {
+  const container = document.getElementById('chat-messages');
+  if (container) container.scrollTop = container.scrollHeight;
 }
 
 // ============ START ============
