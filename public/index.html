@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
 <title>ChatCaj — Private Chats</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
@@ -663,6 +663,102 @@
     white-space: nowrap;
   }
   .chat-user-chip.self { border-color: var(--accent); color: var(--accent); }
+
+  /* ========== FIX PER TELEFONO ========== */
+  @media (max-width: 768px) {
+    #screen-chat.active {
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100vh !important;
+      width: 100% !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      background: var(--bg) !important;
+      z-index: 1000 !important;
+    }
+    
+    .chat-input-area {
+      position: sticky !important;
+      bottom: 0 !important;
+      background: var(--bg2) !important;
+      padding: 10px 12px !important;
+      padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+      border-top: 1px solid var(--border) !important;
+      z-index: 100 !important;
+    }
+    
+    .chat-input-wrap {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      background: var(--bg3) !important;
+      border: 1px solid var(--border2) !important;
+      border-radius: 24px !important;
+      padding: 8px 14px !important;
+    }
+    
+    #chat-input {
+      font-size: 16px !important;
+      line-height: 1.4 !important;
+      padding: 6px 0 !important;
+      min-height: 40px !important;
+    }
+    
+    .send-btn {
+      width: 40px !important;
+      height: 40px !important;
+      border-radius: 50% !important;
+      flex-shrink: 0 !important;
+    }
+    
+    .chat-messages {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding: 12px !important;
+      -webkit-overflow-scrolling: touch !important;
+    }
+    
+    .sidebar {
+      display: none !important;
+    }
+    
+    .chat-container {
+      display: flex !important;
+      width: 100% !important;
+      height: 100% !important;
+      border-radius: 0 !important;
+    }
+    
+    .chat-area {
+      width: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    
+    .msg-bubble {
+      max-width: 85% !important;
+    }
+    
+    .msg-group {
+      max-width: 85% !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .chat-input-area {
+      padding: 8px 10px !important;
+    }
+    .chat-input-wrap {
+      padding: 6px 12px !important;
+    }
+    .send-btn {
+      width: 36px !important;
+      height: 36px !important;
+    }
+  }
 </style>
 </head>
 <body data-theme="neon-blue">
@@ -909,7 +1005,7 @@
 let state = {
   username: '',
   theme: 'neon-blue',
-  chats: {},       // code -> { created, activated, users: [], messages: [] }
+  chats: {},
   currentChat: null,
   pinnedMsg: null,
   ctxMsgId: null
@@ -941,7 +1037,6 @@ function loadState() {
       Object.assign(state, parsed);
     }
   } catch(e) {}
-  // Clean expired chats
   cleanExpiredChats();
 }
 
@@ -967,7 +1062,6 @@ function cleanExpiredChats() {
 // ============ USERNAME ============
 function genUsername() {
   const n = Math.floor(100000 + Math.random() * 899999);
-  // Make sure it's unique
   const existing = Object.values(state.chats || {})
     .flatMap(c => c.users || []);
   if (existing.includes('Guest#' + n)) return genUsername();
@@ -1043,7 +1137,6 @@ function openNewChat() {
   currentCode = genCode();
   const now = Date.now();
   
-  // Chiamata al backend per salvare il codice
   fetch('/api/chat/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1056,7 +1149,6 @@ function openNewChat() {
   .then(res => res.json())
   .then(data => {
     if (data.success) {
-      // Salva anche in locale per i "recent chats"
       state.chats[currentCode] = {
         created: now,
         activated: false,
@@ -1109,7 +1201,6 @@ function joinChat() {
   const code = document.getElementById('join-code-input').value.trim();
   const errEl = document.getElementById('join-error');
 
-  // Special admin code
   if (code === '121110') {
     closeModal('modal-join-chat');
     renderDashboard();
@@ -1123,7 +1214,6 @@ function joinChat() {
     return;
   }
 
-  // Chiamata al backend per verificare e unirsi al chat
   fetch('/api/chat/join', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1147,7 +1237,6 @@ function joinChat() {
       errEl.classList.remove('show');
       closeModal('modal-join-chat');
       
-      // Salva localmente per i recent chats
       if (!state.chats[code]) {
         state.chats[code] = {
           created: data.chat.created_at,
@@ -1159,7 +1248,6 @@ function joinChat() {
         saveState();
       }
       
-      // Entra nella chat
       enterChat(code, false);
     }
   })
@@ -1172,7 +1260,6 @@ function joinChat() {
 
 // ============ SOCKET.IO CONNECTION ============
 function connectToChatRoom(code) {
-  // Disconnetti socket precedente se esiste
   if (socket) {
     socket.disconnect();
   }
@@ -1184,7 +1271,6 @@ function connectToChatRoom(code) {
     username: state.username 
   });
   
-  // Ricevi storico messaggi
   socket.on('chat history', (messages) => {
     const chat = state.chats[code];
     if (chat) {
@@ -1195,7 +1281,6 @@ function connectToChatRoom(code) {
     }
   });
   
-  // Ricevi nuovo messaggio in tempo reale
   socket.on('message received', (message) => {
     const chat = state.chats[code];
     if (chat && state.currentChat === code) {
@@ -1209,7 +1294,6 @@ function connectToChatRoom(code) {
     }
   });
   
-  // Messaggio editato
   socket.on('message edited', ({ messageId, newText, username }) => {
     const chat = state.chats[code];
     if (chat) {
@@ -1225,7 +1309,6 @@ function connectToChatRoom(code) {
     }
   });
   
-  // Messaggio cancellato
   socket.on('message deleted', ({ messageId, username }) => {
     const chat = state.chats[code];
     if (chat) {
@@ -1241,7 +1324,6 @@ function connectToChatRoom(code) {
     }
   });
   
-  // Aggiornamento lista utenti
   socket.on('users update', (users) => {
     const chat = state.chats[code];
     if (chat) {
@@ -1257,19 +1339,16 @@ function connectToChatRoom(code) {
     }
   });
   
-  // Utente entrato
   socket.on('user joined', (username) => {
     if (username !== state.username) {
       addSystemMsg(code, username + ' joined the chat.');
     }
   });
   
-  // Utente uscito
   socket.on('user left', (username) => {
     addSystemMsg(code, username + ' left the chat.');
   });
   
-  // Indicatore di scrittura
   socket.on('user typing', (username) => {
     if (username !== state.username) {
       showTypingIndicator(username);
@@ -1321,12 +1400,10 @@ function enterChat(code, isCreator) {
   const chat = state.chats[code];
   if (!chat) return;
 
-  // Activate chat if joining (second person)
   if (!isCreator && !chat.activated) {
     chat.activated = true;
   }
 
-  // Add user if not present
   if (!chat.users.includes(state.username)) {
     chat.users.push(state.username);
   }
@@ -1334,7 +1411,6 @@ function enterChat(code, isCreator) {
   saveState();
   state.currentChat = code;
 
-  // Update UI
   document.getElementById('chat-title').textContent = 'Chat #' + code;
   document.getElementById('chat-code-badge').textContent = code;
   const subEl = document.getElementById('chat-header-sub');
@@ -1345,17 +1421,11 @@ function enterChat(code, isCreator) {
     subEl.textContent = 'Waiting for someone to join... (24h)';
   }
 
-  // Pinned
   state.pinnedMsg = chat.pinnedMsg || null;
   updatePinBar();
-
-  // Users bar
   renderUsersBar();
-
-  // Messages
   renderMessages();
 
-  // System message
   if (isCreator && chat.messages.length === 0) {
     addSystemMsg(code, 'Chat created. Share code ' + code + ' to invite someone.');
   } else if (!isCreator && chat.messages.filter(m => m.type === 'system' && m.text.includes('joined')).length === 0) {
@@ -1364,9 +1434,7 @@ function enterChat(code, isCreator) {
     renderMessages();
   }
 
-  // Connect to socket for real-time updates
   connectToChatRoom(code);
-  
   showScreen('chat');
 }
 
@@ -1428,9 +1496,6 @@ function buildMsgEl(msg) {
   if (msg.edited) statusTags += '<span class="msg-status-tag edited">edited</span>';
   if (msg.deleted) statusTags += '<span class="msg-status-tag deleted">deleted</span>';
 
-  const canEdit = isOwn && !msg.deleted;
-  const editHidden = canEdit ? '' : 'style="display:none"';
-
   wrap.innerHTML = `
     <div class="msg-avatar" style="background:${avatarColor}">${avatarLetter}</div>
     <div class="msg-group">
@@ -1472,6 +1537,7 @@ function escHtml(str) {
     .replace(/\n/g,'<br>');
 }
 
+// ============ SEND MESSAGE (CORRETTA - SENZA DUPLICAZIONE) ============
 function sendMessage() {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
@@ -1489,7 +1555,7 @@ function sendMessage() {
     history: []
   };
   
-  // Invia via socket se connesso
+  // Invia SOLO via socket - NON aggiungere localmente per evitare duplicati
   if (socket && state.currentChat) {
     socket.emit('new message', { 
       chatCode: state.currentChat, 
@@ -1497,19 +1563,9 @@ function sendMessage() {
     });
   }
   
-  // Aggiungi localmente per feedback immediato
-  const chat = state.chats[state.currentChat];
-  if (chat) {
-    chat.messages.push(msg);
-    saveState();
-    renderMessages();
-    scrollToBottom();
-  }
-  
   input.value = '';
   input.style.height = 'auto';
   
-  // Notifica stop typing
   if (socket) {
     socket.emit('stop typing', { chatCode: state.currentChat });
   }
@@ -1700,7 +1756,8 @@ function leaveChat() {
   showScreen('home');
   renderRecentChats();
 }
-  // ============ DELETE CHAT (Owner only) ============
+
+// ============ DELETE CHAT (Owner only) ============
 function deleteCurrentChat() {
   if (!state.currentChat) return;
   
@@ -1721,7 +1778,6 @@ function deleteCurrentChat() {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        // Rimuovi dalla lista locale
         delete state.chats[state.currentChat];
         saveState();
         state.currentChat = null;
@@ -1747,7 +1803,6 @@ function showChatInfo() {
   const status = chat.activated ? 'Permanent (activated)' : 'Pending (24h expiry)';
   const created = new Date(chat.created).toLocaleString();
   
-  // Controlla se l'utente è il creatore (owner)
   const isOwner = chat.users && chat.users[0] === state.username;
   
   document.getElementById('chat-info-text').innerHTML =
@@ -1756,7 +1811,6 @@ function showChatInfo() {
     '<div style="margin-top:12px"><strong style="font-size:0.82rem;color:var(--text3)">MEMBERS</strong><div class="dash-users" style="margin-top:8px">' +
     chat.users.map(u => `<div class="dash-user-pill"><span class="dot"></span>${escHtml(u)}</div>`).join('') + '</div></div>';
   
-  // Mostra o nascondi il pulsante Delete Chat in base a isOwner
   const deleteBtn = document.getElementById('delete-chat-btn');
   if (deleteBtn) {
     deleteBtn.style.display = isOwner ? 'flex' : 'none';
