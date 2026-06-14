@@ -110,6 +110,51 @@
   .screen.active { display: flex; flex-direction: column; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+  /* IMAGE VIEWER */
+  .image-viewer {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.95);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+  }
+  .image-viewer.active { display: flex; }
+  .image-viewer img {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+    cursor: zoom-in;
+    transition: transform 0.2s;
+  }
+  .image-viewer img.zoomed {
+    transform: scale(1.5);
+    cursor: zoom-out;
+  }
+  .image-viewer-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2001;
+  }
+  .image-viewer-close:hover { background: rgba(255,255,255,0.3); }
+
   /* GLASS PANEL */
   .glass-panel {
     background: var(--glass);
@@ -740,7 +785,7 @@
   }
   .chat-user-chip.self { border-color: var(--accent); color: var(--accent); }
 
-  /* ========== FIX PER TELEFONO ========== */
+  /* ========== FIX PER TELEFONO (MIGLIORATO) ========== */
   @media (max-width: 768px) {
     #screen-chat.active {
       display: flex !important;
@@ -775,8 +820,10 @@
     .chat-input-area {
       position: sticky !important;
       bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
       background: var(--bg2) !important;
-      padding: 10px 12px !important;
+      padding: 8px 12px !important;
       padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
       border-top: 1px solid var(--border) !important;
       z-index: 100 !important;
@@ -797,6 +844,7 @@
       line-height: 1.4 !important;
       padding: 8px 0 !important;
       min-height: 40px !important;
+      max-height: 80px !important;
     }
     
     .send-btn {
@@ -807,9 +855,9 @@
     }
     
     .btn-icon {
-      width: 32px !important;
-      height: 32px !important;
-      border-radius: 16px !important;
+      width: 36px !important;
+      height: 36px !important;
+      border-radius: 50% !important;
     }
     
     .sidebar {
@@ -849,7 +897,8 @@
 
   @media (max-width: 480px) {
     .chat-input-area {
-      padding: 8px 10px !important;
+      padding: 6px 10px !important;
+      padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
     }
     .chat-input-wrap {
       padding: 4px 10px !important;
@@ -859,12 +908,15 @@
       height: 36px !important;
     }
     .btn-icon {
-      width: 28px !important;
-      height: 28px !important;
+      width: 32px !important;
+      height: 32px !important;
     }
     .msg-avatar {
       width: 28px !important;
       height: 28px !important;
+    }
+    .msg-bubble {
+      padding: 8px 10px !important;
     }
   }
 </style>
@@ -949,6 +1001,12 @@
     </div>
     <input type="file" id="file-input" accept="image/*" style="display:none" onchange="sendFile(this)">
   </div>
+</div>
+
+<!-- IMAGE VIEWER -->
+<div id="image-viewer" class="image-viewer" onclick="closeImageViewer()">
+  <button class="image-viewer-close" onclick="closeImageViewer()">✕</button>
+  <img id="viewer-image" src="" onclick="toggleZoom(event)">
 </div>
 
 <!-- GIPHY MODAL -->
@@ -1150,6 +1208,28 @@ let socket = null;
 // ============ GIPHY ============
 const GIPHY_API_KEY = 'nQZpPuDPbkDrDOKgjfFxNVApiC63OxyN';
 let giphyCache = {};
+
+// ============ IMAGE VIEWER ============
+let currentViewerImage = null;
+
+function openImageViewer(imageUrl) {
+  currentViewerImage = imageUrl;
+  const viewer = document.getElementById('image-viewer');
+  const img = document.getElementById('viewer-image');
+  img.src = imageUrl;
+  img.classList.remove('zoomed');
+  viewer.classList.add('active');
+}
+
+function closeImageViewer() {
+  document.getElementById('image-viewer').classList.remove('active');
+}
+
+function toggleZoom(e) {
+  e.stopPropagation();
+  const img = document.getElementById('viewer-image');
+  img.classList.toggle('zoomed');
+}
 
 // ============ INIT ============
 function init() {
@@ -1782,7 +1862,7 @@ function buildMsgEl(msg) {
 
   let messageContent = '';
   if (msg.type === 'image') {
-    messageContent = `<img src="${msg.text}" class="msg-image" onclick="window.open('${msg.text}','_blank')">`;
+    messageContent = `<img src="${msg.text}" class="msg-image" onclick="event.stopPropagation(); openImageViewer('${msg.text}')">`;
   } else if (msg.type === 'sticker') {
     messageContent = `<img src="${msg.text}" class="msg-sticker">`;
   } else if (msg.type === 'file') {
