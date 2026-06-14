@@ -221,6 +221,11 @@
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
   }
+  .btn-icon img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+  }
   .btn-icon:hover { background: var(--bg3); color: var(--text); }
 
   /* ========== MODAL ========== */
@@ -362,19 +367,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #fff;
-    background: var(--accent);
     background-size: cover;
     background-position: center;
   }
   .msg-avatar.default-avatar {
     background: linear-gradient(135deg, var(--accent), var(--accent2));
   }
-  .msg-avatar.default-avatar::before {
-    content: "👤";
-    font-size: 1rem;
+  .msg-avatar.default-avatar img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
   }
   .msg-group { display: flex; flex-direction: column; max-width: 72%; gap: 2px; }
   .msg-wrap.own .msg-group { align-items: flex-end; }
@@ -521,8 +523,8 @@
   .send-btn:hover { transform: scale(1.05); box-shadow: 0 4px 15px var(--accent-glow); }
   .send-btn svg { width: 18px; height: 18px; fill: #fff; }
 
-  /* KLIPY MODAL */
-  .klipy-grid {
+  /* GIPHY MODAL */
+  .giphy-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
@@ -530,13 +532,13 @@
     overflow-y: auto;
     padding: 8px;
   }
-  .klipy-img {
+  .giphy-img {
     width: 100%;
     border-radius: 8px;
     cursor: pointer;
     transition: transform 0.2s;
   }
-  .klipy-img:hover {
+  .giphy-img:hover {
     transform: scale(1.05);
   }
 
@@ -840,7 +842,7 @@
       height: 32px !important;
     }
     
-    .klipy-grid {
+    .giphy-grid {
       grid-template-columns: repeat(2, 1fr) !important;
     }
   }
@@ -863,7 +865,6 @@
     .msg-avatar {
       width: 28px !important;
       height: 28px !important;
-      font-size: 0.7rem !important;
     }
   }
 </style>
@@ -935,8 +936,12 @@
       <textarea id="chat-input" placeholder="Message..." rows="1"
         onkeydown="handleInputKey(event)" oninput="autoResize(this); onMessageInput()"></textarea>
       <div class="input-buttons">
-        <button class="btn-icon" onclick="document.getElementById('file-input').click()" title="Send image/file">📎</button>
-        <button class="btn-icon" onclick="openKlipyModal()" title="GIF Stickers">🎨</button>
+        <button class="btn-icon" onclick="document.getElementById('file-input').click()" title="Allega file">
+          <img src="https://i.ibb.co/fd2xhcgz/sallega.png" alt="allega" style="width:20px;height:20px">
+        </button>
+        <button class="btn-icon" onclick="openGiphyModal()" title="GIF Stickers">
+          <img src="https://i.ibb.co/3yPV742h/sgif.png" alt="gif" style="width:20px;height:20px">
+        </button>
         <button class="send-btn" onclick="sendMessage()" title="Send">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -946,16 +951,16 @@
   </div>
 </div>
 
-<!-- KLIPY MODAL -->
-<div class="modal-overlay" id="modal-klipy">
+<!-- GIPHY MODAL -->
+<div class="modal-overlay" id="modal-giphy">
   <div class="modal" style="max-width: 500px;">
     <h2>🎨 Choose a GIF Sticker</h2>
     <div class="input-wrap">
-      <input type="text" id="klipy-search" class="input-field" placeholder="Search GIFs..." oninput="searchKlipy()">
+      <input type="text" id="giphy-search" class="input-field" placeholder="Search GIFs..." oninput="searchGiphy()">
     </div>
-    <div id="klipy-grid" class="klipy-grid"></div>
+    <div id="giphy-grid" class="giphy-grid"></div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-klipy')">Cancel</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-giphy')">Cancel</button>
     </div>
   </div>
 </div>
@@ -973,7 +978,9 @@
       <div class="settings-section-title">Profile</div>
       <div class="settings-card">
         <div class="settings-row">
-          <div class="settings-row-icon">👤</div>
+          <div class="settings-row-icon">
+            <img src="https://i.ibb.co/xS69XxwL/sprofilo.png" alt="profile" style="width:24px;height:24px">
+          </div>
           <div class="settings-row-info">
             <div class="settings-row-label">Current Username</div>
             <div class="settings-row-sub" id="settings-username">Guest#000000</div>
@@ -1023,7 +1030,7 @@
           <div class="settings-row-icon">💬</div>
           <div class="settings-row-info">
             <div class="settings-row-label">ChatCaj</div>
-            <div class="settings-row-sub">Version 2.0.0 — With Klipy GIFs, Images & Mobile Fix</div>
+            <div class="settings-row-sub">Version 2.0.0 — With GIPHY, Images & Mobile Fix</div>
           </div>
         </div>
       </div>
@@ -1140,9 +1147,9 @@ let state = {
 // ============ SOCKET.IO ============
 let socket = null;
 
-// ============ KLIPY ============
-const KLIPY_API_KEY = 'CFkmmSg0Y8iL1Ur6wbiDGIUtmTslZEipMlAGLswBSj5XRn5NiZUUH3HkOlmHqHoJ';
-let klipyCache = {};
+// ============ GIPHY ============
+const GIPHY_API_KEY = 'nQZpPuDPbkDrDOKgjfFxNVApiC63OxyN';
+let giphyCache = {};
 
 // ============ INIT ============
 function init() {
@@ -1388,51 +1395,46 @@ function joinChat() {
   });
 }
 
-// ============ KLIPY FUNCTIONS ============
-function openKlipyModal() {
-  openModal('modal-klipy');
-  searchKlipy();
+// ============ GIPHY FUNCTIONS ============
+function openGiphyModal() {
+  openModal('modal-giphy');
+  searchGiphy();
 }
 
-async function searchKlipy() {
-  const query = document.getElementById('klipy-search').value || 'funny';
+async function searchGiphy() {
+  const query = document.getElementById('giphy-search').value || 'funny';
   
-  // Check cache
-  if (klipyCache[query]) {
-    renderKlipyGrid(klipyCache[query]);
-    return;
-  }
-  
-  const grid = document.getElementById('klipy-grid');
+  const grid = document.getElementById('giphy-grid');
   if (grid) grid.innerHTML = '<div style="text-align:center;padding:20px">⏳ Loading GIFs...</div>';
   
-  try {
-    // Klipy API endpoint (similar to Tenor)
-    const response = await fetch(`https://g.klipy.com/v1/search?q=${encodeURIComponent(query)}&key=${KLIPY_API_KEY}&limit=20`);
-    const data = await response.json();
-    
-    const results = data.results || [];
-    klipyCache[query] = results;
-    renderKlipyGrid(results);
-  } catch(e) {
-    console.error('Klipy error:', e);
-    if (grid) grid.innerHTML = '<div style="text-align:center;padding:20px">❌ Error loading GIFs. Try again.</div>';
-  }
-}
-
-function renderKlipyGrid(gifs) {
-  const grid = document.getElementById('klipy-grid');
-  if (!grid) return;
-  
-  if (!gifs || gifs.length === 0) {
-    grid.innerHTML = '<div style="text-align:center;padding:20px">No GIFs found. Try another search.</div>';
+  if (giphyCache[query]) {
+    renderGiphyGrid(giphyCache[query]);
     return;
   }
   
+  try {
+    const response = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=20&rating=g`);
+    const data = await response.json();
+    
+    if (data.data && data.data.length > 0) {
+      giphyCache[query] = data.data;
+      renderGiphyGrid(data.data);
+    } else {
+      if (grid) grid.innerHTML = '<div style="text-align:center;padding:20px">No GIFs found. Try another search.</div>';
+    }
+  } catch(e) {
+    console.error('GIPHY error:', e);
+    if (grid) grid.innerHTML = '<div style="text-align:center;padding:20px">❌ Error loading GIFs. Check API key.</div>';
+  }
+}
+
+function renderGiphyGrid(gifs) {
+  const grid = document.getElementById('giphy-grid');
+  if (!grid) return;
+  
   grid.innerHTML = gifs.map(gif => {
-    const gifUrl = gif.media && gif.media[0] ? gif.media[0].tinygif?.url || gif.media[0].gif?.url : '';
-    const fullGifUrl = gif.media && gif.media[0] ? gif.media[0].gif?.url || gifUrl : '';
-    return `<img src="${gifUrl}" class="klipy-img" onclick="sendSticker('${fullGifUrl}')">`;
+    const gifUrl = gif.images?.fixed_height?.url || gif.images?.original?.url;
+    return `<img src="${gifUrl}" class="giphy-img" onclick="sendSticker('${gifUrl}')">`;
   }).join('');
 }
 
@@ -1456,27 +1458,24 @@ function sendSticker(imageUrl) {
     socket.emit('new message', { chatCode: state.currentChat, message: msg });
     showToast('GIF sent!', 'success');
   }
-  closeModal('modal-klipy');
+  closeModal('modal-giphy');
 }
 
-// ============ FILE SHARING (FIXED) ============
+// ============ FILE SHARING ============
 function sendFile(input) {
   const file = input.files[0];
   if (!file || !state.currentChat) return;
   
-  // Check file size (max 2MB for images)
   if (file.size > 2 * 1024 * 1024) {
     showToast('Image too large (max 2MB)', 'error');
     input.value = '';
     return;
   }
   
-  // Show loading
   showToast('📤 Sending image...', 'success');
   
   const reader = new FileReader();
   reader.onload = function(e) {
-    // Compress image if it's an image
     if (file.type.startsWith('image/')) {
       const img = new Image();
       img.onload = function() {
@@ -1484,7 +1483,6 @@ function sendFile(input) {
         let width = img.width;
         let height = img.height;
         
-        // Resize if too large (max 800px)
         if (width > 800) {
           height = (height * 800) / width;
           width = 800;
@@ -1499,7 +1497,6 @@ function sendFile(input) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Compress to JPEG at 70% quality
         const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
         
         const msg = {
@@ -1519,7 +1516,6 @@ function sendFile(input) {
       };
       img.src = e.target.result;
     } else {
-      // For non-image files
       const msg = {
         id: msgId(),
         type: 'file',
@@ -1801,7 +1797,9 @@ function buildMsgEl(msg) {
   if (msg.deleted) statusTags += '<span class="msg-status-tag deleted">deleted</span>';
 
   wrap.innerHTML = `
-    <div class="msg-avatar default-avatar" style="background:${avatarColor}"></div>
+    <div class="msg-avatar default-avatar" style="background:${avatarColor}">
+      <img src="https://i.ibb.co/xS69XxwL/sprofilo.png" alt="profile" style="width:24px;height:24px;border-radius:50%">
+    </div>
     <div class="msg-group">
       ${!isOwn ? `<div class="msg-sender">${escHtml(msg.sender)}</div>` : ''}
       <div class="msg-bubble-row">
