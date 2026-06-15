@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>who</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
+<style>
+body{
+  margin:0;
+  height:100vh;
+  overflow:hidden;
+  background:#000;
+  font-family:'Inter', sans-serif;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+/* ===== SFONDO ONDE ===== */
+.wave {
+  position:absolute;
+  width:200%;
+  height:200%;
+  left:-50%;
+  top:-50%;
+  background: radial-gradient(circle at 50% 50%, rgba(0,170,255,0.25), transparent 60%);
+  animation: moveWave 8s ease-in-out infinite;
+  filter: blur(30px);
+  opacity:0.6;
+}
+
+.wave2 {
+  position:absolute;
+  width:200%;
+  height:200%;
+  left:-50%;
+  top:-50%;
+  background: radial-gradient(circle at 30% 70%, rgba(0,120,255,0.2), transparent 65%);
+  animation: moveWave2 10s ease-in-out infinite;
+  filter: blur(40px);
+  opacity:0.5;
+}
+
+.wave3 {
+  position:absolute;
+  width:200%;
+  height:200%;
+  left:-50%;
+  top:-50%;
+  background: radial-gradient(circle at 70% 40%, rgba(0,200,255,0.15), transparent 70%);
+  animation: moveWave3 12s ease-in-out infinite;
+  filter: blur(50px);
+  opacity:0.4;
+}
+
+@keyframes moveWave {
+  0%   { transform: translate(0,0) scale(1); }
+  50%  { transform: translate(60px,-40px) scale(1.1); }
+  100% { transform: translate(0,0) scale(1); }
+}
+
+@keyframes moveWave2 {
+  0%   { transform: translate(0,0) scale(1); }
+  50%  { transform: translate(-50px,60px) scale(1.15); }
+  100% { transform: translate(0,0) scale(1); }
+}
+
+@keyframes moveWave3 {
+  0%   { transform: translate(0,0) scale(1); }
+  50%  { transform: translate(40px,50px) scale(1.2); }
+  100% { transform: translate(0,0) scale(1); }
+}
+
+/* ===== TESTO ===== */
+.text{
+  position:relative;
+  z-index:2;
+  color:#00aaff;
+  font-size:72px;
+  font-weight:800;
+  text-align:center;
+  line-height:1.3;
+  text-shadow:
+    0 0 10px rgba(0,170,255,0.6),
+    0 0 25px rgba(0,120,255,0.5);
+  animation: fadeIn 1.5s ease-out;
+}
+
+@keyframes fadeIn{
+  from{
+    opacity:0;
+    transform:translateY(15px);
+  }
+  to{
+    opacity:1;
+    transform:translateY(0);
+  }
+}
+</style>
+
+</head>
+
+<body>
+
+<!-- ONDE -->
+<div class="wave"></div>
+<div class="wave2"></div>
+<div class="wave3"></div>
+
+<!-- TESTO -->
+<div class="text">
+  ciao sono javraj<br>
+  lo creato io questo sito
+</div>
+
+</body>
+</html>
