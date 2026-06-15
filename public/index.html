@@ -1761,9 +1761,14 @@ function toggleToolbar() {
     const isActive = toolbar.classList.contains('active');
     toolbar.classList.toggle('active');
     
-    // Dopo aver aperto la toolbar, metti il focus sull'input (apre la tastiera su mobile)
+    // Se stiamo aprendo la toolbar, apriamo anche la tastiera
     if (!isActive && input) {
-      input.focus();
+      input.focus();      // Mette il focus sul campo input
+      input.click();      // Su alcuni browser mobile forza l'apertura tastiera
+      // Scorri la pagina per assicurarti che l'input sia visibile
+      setTimeout(() => {
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
     }
   }
 }
