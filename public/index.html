@@ -458,6 +458,14 @@
     display: flex; align-items: center; gap: 6px; margin-top: 2px;
   }
   .msg-time { font-size: 0.7rem; color: var(--text3); }
+  .msg-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .msg-status.sent { color: var(--text3); }
+  .msg-status.delivered { color: var(--text2); }
+  .msg-status.read { color: var(--success); }
   .msg-status-tag {
     font-size: 0.68rem; color: var(--text3);
     background: var(--glass); border: 1px solid var(--border);
@@ -474,6 +482,59 @@
   }
   .msg-bubble-row:hover .msg-actions-btn,
   .msg-actions-btn.active { opacity: 1; background: var(--glass2); color: var(--text); }
+
+  /* REACTIONS PANEL */
+  .reactions-panel {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 30px;
+    padding: 6px 10px;
+    gap: 8px;
+    z-index: 600;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  .reactions-panel.active { display: flex; }
+  .reaction-btn {
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 20px;
+    transition: transform 0.1s;
+  }
+  .reaction-btn:hover { transform: scale(1.2); background: var(--glass); }
+  .msg-reactions {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .reaction-badge {
+    background: var(--glass);
+    border-radius: 12px;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+  }
+  .reply-preview {
+    background: var(--glass);
+    border-left: 3px solid var(--accent);
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    color: var(--text2);
+    cursor: pointer;
+  }
+  .reply-preview .reply-sender { color: var(--accent); font-weight: 500; }
 
   /* CONTEXT MENU */
   .ctx-menu {
@@ -513,13 +574,17 @@
   }
   .edit-btns { display: none; gap: 6px; margin-top: 6px; }
 
-  /* CHAT INPUT */
+  /* CHAT INPUT - FIX MOBILE */
   .chat-input-area {
     padding: 12px 16px;
     background: var(--bg2);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-    position: relative;
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
   }
   .chat-input-wrap {
     display: flex;
@@ -785,7 +850,7 @@
   }
   .chat-user-chip.self { border-color: var(--accent); color: var(--accent); }
 
-  /* ========== FIX PER TELEFONO (MIGLIORATO) ========== */
+  /* ========== FIX MOBILE ========== */
   @media (max-width: 768px) {
     #screen-chat.active {
       display: flex !important;
@@ -820,11 +885,8 @@
     .chat-input-area {
       position: sticky !important;
       bottom: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
       background: var(--bg2) !important;
-      padding: 8px 12px !important;
-      padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+      padding: 10px 12px !important;
       border-top: 1px solid var(--border) !important;
       z-index: 100 !important;
     }
@@ -844,7 +906,6 @@
       line-height: 1.4 !important;
       padding: 8px 0 !important;
       min-height: 40px !important;
-      max-height: 80px !important;
     }
     
     .send-btn {
@@ -855,9 +916,9 @@
     }
     
     .btn-icon {
-      width: 36px !important;
-      height: 36px !important;
-      border-radius: 50% !important;
+      width: 32px !important;
+      height: 32px !important;
+      border-radius: 16px !important;
     }
     
     .sidebar {
@@ -893,12 +954,16 @@
     .giphy-grid {
       grid-template-columns: repeat(2, 1fr) !important;
     }
+    
+    .msg-actions-btn {
+      opacity: 1 !important;
+      background: var(--glass2) !important;
+    }
   }
 
   @media (max-width: 480px) {
     .chat-input-area {
-      padding: 6px 10px !important;
-      padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+      padding: 8px 10px !important;
     }
     .chat-input-wrap {
       padding: 4px 10px !important;
@@ -908,15 +973,12 @@
       height: 36px !important;
     }
     .btn-icon {
-      width: 32px !important;
-      height: 32px !important;
+      width: 28px !important;
+      height: 28px !important;
     }
     .msg-avatar {
       width: 28px !important;
       height: 28px !important;
-    }
-    .msg-bubble {
-      padding: 8px 10px !important;
     }
   }
 </style>
@@ -1199,19 +1261,17 @@ let state = {
   chats: {},
   currentChat: null,
   pinnedMsg: null,
-  ctxMsgId: null
+  ctxMsgId: null,
+  replyToMsg: null,
+  lastSeen: {}
 };
 
-// ============ SOCKET.IO ============
 let socket = null;
-
-// ============ GIPHY ============
 const GIPHY_API_KEY = 'nQZpPuDPbkDrDOKgjfFxNVApiC63OxyN';
 let giphyCache = {};
-
-// ============ IMAGE VIEWER ============
 let currentViewerImage = null;
 
+// ============ IMAGE VIEWER ============
 function openImageViewer(imageUrl) {
   currentViewerImage = imageUrl;
   const viewer = document.getElementById('image-viewer');
@@ -1275,8 +1335,7 @@ function cleanExpiredChats() {
     }
   }
 }
-
-// ============ USERNAME ============
+  // ============ USERNAME ============
 function genUsername() {
   const n = Math.floor(100000 + Math.random() * 899999);
   const existing = Object.values(state.chats || {})
@@ -1531,13 +1590,16 @@ function sendSticker(imageUrl) {
     text: imageUrl,
     time: Date.now(),
     edited: false,
-    deleted: false
+    deleted: false,
+    reactions: [],
+    replyTo: state.replyToMsg
   };
   
   if (socket && state.currentChat) {
     socket.emit('new message', { chatCode: state.currentChat, message: msg });
     showToast('GIF sent!', 'success');
   }
+  if (state.replyToMsg) state.replyToMsg = null;
   closeModal('modal-giphy');
 }
 
@@ -1586,13 +1648,16 @@ function sendFile(input) {
           text: compressedDataUrl,
           time: Date.now(),
           edited: false,
-          deleted: false
+          deleted: false,
+          reactions: [],
+          replyTo: state.replyToMsg
         };
         
         if (socket && state.currentChat) {
           socket.emit('new message', { chatCode: state.currentChat, message: msg });
           showToast('✅ Image sent!', 'success');
         }
+        if (state.replyToMsg) state.replyToMsg = null;
       };
       img.src = e.target.result;
     } else {
@@ -1629,7 +1694,46 @@ function getAvatarColor(username) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// ============ SOCKET.IO CONNECTION ============
+function msgId() {
+  return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+}
+
+// ============ MESSAGE STATUS ============
+function updateMessageStatus(chatCode, msgId, status) {
+  const chat = state.chats[chatCode];
+  if (chat) {
+    const msg = chat.messages.find(m => m.id === msgId);
+    if (msg) { msg.status = status; saveState(); }
+  }
+}
+
+// ============ REACTIONS ============
+function addReaction(msgId, reaction) {
+  const chat = state.chats[state.currentChat];
+  const msg = chat?.messages.find(m => m.id === msgId);
+  if (msg) {
+    if (!msg.reactions) msg.reactions = [];
+    const existing = msg.reactions.find(r => r.user === state.username);
+    if (existing) existing.emoji = reaction;
+    else msg.reactions.push({ user: state.username, emoji: reaction });
+    saveState();
+    renderMessages();
+    if (socket) socket.emit('reaction', { chatCode: state.currentChat, messageId: msgId, reaction, user: state.username });
+  }
+}
+
+// ============ REPLY ============
+function setReplyTo(msgId) {
+  const chat = state.chats[state.currentChat];
+  const msg = chat?.messages.find(m => m.id === msgId);
+  if (msg) {
+    state.replyToMsg = { id: msg.id, sender: msg.sender, text: msg.text?.substring(0, 50) };
+    showToast(`Replying to ${msg.sender}`, 'success');
+    document.getElementById('chat-input').focus();
+  }
+}
+
+// ============ SOCKET.IO ============
 function connectToChatRoom(code) {
   if (socket) {
     socket.disconnect();
@@ -1659,6 +1763,8 @@ function connectToChatRoom(code) {
       saveState();
       renderMessages();
       scrollToBottom();
+      updateMessageStatus(code, message.id, 'delivered');
+      setTimeout(() => updateMessageStatus(code, message.id, 'read'), 1000);
     } else if (chat) {
       chat.messages.push(message);
       saveState();
@@ -1729,6 +1835,21 @@ function connectToChatRoom(code) {
   socket.on('user stop typing', () => {
     hideTypingIndicator();
   });
+  
+  socket.on('reaction', ({ messageId, reaction, user }) => {
+    const chat = state.chats[code];
+    if (chat) {
+      const msg = chat.messages.find(m => m.id === messageId);
+      if (msg) {
+        if (!msg.reactions) msg.reactions = [];
+        const existing = msg.reactions.find(r => r.user === user);
+        if (existing) existing.emoji = reaction;
+        else msg.reactions.push({ user, emoji: reaction });
+        saveState();
+        if (state.currentChat === code) renderMessages();
+      }
+    }
+  });
 }
 
 function showTypingIndicator(username) {
@@ -1781,6 +1902,7 @@ function enterChat(code, isCreator) {
 
   saveState();
   state.currentChat = code;
+  state.replyToMsg = null;
 
   document.getElementById('chat-title').textContent = 'Chat #' + code;
   document.getElementById('chat-code-badge').textContent = code;
@@ -1816,10 +1938,6 @@ function addSystemMsg(code, text) {
 }
 
 // ============ MESSAGES ============
-function msgId() {
-  return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-}
-
 function renderMessages() {
   const chat = state.chats[state.currentChat];
   if (!chat) return;
@@ -1871,6 +1989,15 @@ function buildMsgEl(msg) {
     messageContent = `<div class="msg-text">${msg.deleted ? 'This message has been deleted.' : escHtml(msg.text)}</div>`;
   }
 
+  let replyHtml = '';
+  if (msg.replyTo) replyHtml = `<div class="reply-preview"><span class="reply-sender">↳ ${escHtml(msg.replyTo.sender)}</span><br>${escHtml(msg.replyTo.text)}</div>`;
+  
+  let reactionsHtml = '';
+  if (msg.reactions?.length) reactionsHtml = `<div class="msg-reactions">${msg.reactions.map(r => `<span class="reaction-badge" onclick="addReaction('${msg.id}','${r.emoji}')">${r.emoji}</span>`).join('')}</div>`;
+
+  let statusHtml = '';
+  if (isOwn && msg.status) statusHtml = `<span class="msg-status ${msg.status}">${msg.status === 'sent' ? '✓' : msg.status === 'delivered' ? '✓✓' : '✓✓'}</span>`;
+
   let statusTags = '';
   if (isPinned) statusTags += '<span class="msg-status-tag pinned">📌 pinned</span>';
   if (msg.edited) statusTags += '<span class="msg-status-tag edited">edited</span>';
@@ -1882,6 +2009,7 @@ function buildMsgEl(msg) {
     </div>
     <div class="msg-group">
       ${!isOwn ? `<div class="msg-sender">${escHtml(msg.sender)}</div>` : ''}
+      ${replyHtml}
       <div class="msg-bubble-row">
         <div class="msg-bubble${msg.deleted ? ' msg-deleted' : ''}">
           ${messageContent}
@@ -1890,12 +2018,15 @@ function buildMsgEl(msg) {
             <button class="btn btn-xs btn-primary" onclick="saveEdit('${msg.id}')">Save</button>
             <button class="btn btn-xs btn-ghost" onclick="cancelEdit('${msg.id}')">Cancel</button>
           </div>
+          ${reactionsHtml}
         </div>
         <button class="msg-actions-btn" onclick="openCtxMenu(event, '${msg.id}')" title="More options">⋯</button>
       </div>
       <div class="msg-meta">
         <span class="msg-time">${time}</span>
+        ${statusHtml}
         ${statusTags}
+        <button class="reply-btn" onclick="setReplyTo('${msg.id}')">↩️</button>
       </div>
     </div>
   `;
@@ -1927,7 +2058,10 @@ function sendMessage() {
     edited: false,
     deleted: false,
     originalText: null,
-    history: []
+    history: [],
+    status: 'sent',
+    reactions: [],
+    replyTo: state.replyToMsg
   };
   
   if (socket && state.currentChat) {
@@ -1939,6 +2073,7 @@ function sendMessage() {
   
   input.value = '';
   input.style.height = 'auto';
+  state.replyToMsg = null;
   
   if (socket) {
     socket.emit('stop typing', { chatCode: state.currentChat });
@@ -2021,9 +2156,11 @@ function ctxAction(action) {
     msg.history = msg.history || [];
     msg.history.push({ type: 'deleted', text: msg.text, time: Date.now() });
     msg.deleted = true;
+    msg.text = '[deleted]';
     saveState();
     renderMessages();
     showToast('Message deleted', 'success');
+    if (socket) socket.emit('delete message', { chatCode: state.currentChat, messageId: msg.id, username: state.username });
   }
 }
 
@@ -2074,6 +2211,7 @@ function saveEdit(msgId) {
   saveState();
   renderMessages();
   showToast('Message edited', 'success');
+  if (socket) socket.emit('edit message', { chatCode: state.currentChat, messageId: msgId, newText, username: state.username });
 }
 
 function cancelEdit(msgId) {
@@ -2131,6 +2269,7 @@ function renderUsersBar() {
 function leaveChat() {
   state.currentChat = null;
   state.pinnedMsg = null;
+  state.replyToMsg = null;
   showScreen('home');
   renderRecentChats();
 }
@@ -2216,13 +2355,12 @@ function renderRecentChats() {
   wrap.style.display = 'block';
   list.innerHTML = codes.slice(-5).reverse().map(code => {
     const chat = state.chats[code];
-    const status = chat.activated ? '🟢 Active' : '🟡 Pending';
     const msgCount = chat.messages.filter(m => m.type === 'msg').length;
     return `
       <div class="recent-item" onclick="enterChat('${code}', false)">
         <div>
           <div class="recent-item-code">${code}</div>
-          <div class="recent-item-info">${status} · ${msgCount} msg${msgCount !== 1 ? 's' : ''}</div>
+          <div class="recent-item-info">${msgCount} messages</div>
         </div>
         <span class="recent-item-arrow">→</span>
       </div>
