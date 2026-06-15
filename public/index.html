@@ -1756,8 +1756,15 @@ function toggleZoom(e) {
 // ============ TOOLBAR ============
 function toggleToolbar() {
   const toolbar = document.getElementById('chat-toolbar');
+  const input = document.getElementById('chat-input');
   if (toolbar) {
+    const isActive = toolbar.classList.contains('active');
     toolbar.classList.toggle('active');
+    
+    // Dopo aver aperto la toolbar, metti il focus sull'input (apre la tastiera su mobile)
+    if (!isActive && input) {
+      input.focus();
+    }
   }
 }
 
@@ -1765,7 +1772,7 @@ function addEmoji(emoji) {
   const input = document.getElementById('chat-input');
   if (input) {
     input.value += emoji;
-    input.focus();
+    input.focus();  // Questo già apre la tastiera su mobile!
     autoResize(input);
   }
 }
