@@ -1754,6 +1754,7 @@ function toggleZoom(e) {
 }
 
 // ============ TOOLBAR ============
+// ============ TOOLBAR ============
 function toggleToolbar() {
   const toolbar = document.getElementById('chat-toolbar');
   const input = document.getElementById('chat-input');
@@ -1761,18 +1762,12 @@ function toggleToolbar() {
     const isActive = toolbar.classList.contains('active');
     toolbar.classList.toggle('active');
     
-    // Se stiamo aprendo la toolbar, apriamo anche la tastiera
+    // Se stiamo aprendo la toolbar, metti il focus sull'input (apre la tastiera su mobile)
     if (!isActive && input) {
-      input.focus();      // Mette il focus sul campo input
-      input.click();      // Su alcuni browser mobile forza l'apertura tastiera
-      // Scorri la pagina per assicurarti che l'input sia visibile
-      setTimeout(() => {
-        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 100);
+      input.focus();
     }
   }
 }
-
 function addEmoji(emoji) {
   const input = document.getElementById('chat-input');
   if (input) {
