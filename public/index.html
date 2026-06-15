@@ -370,7 +370,9 @@
   #screen-chat.active { display: flex; }
 
   .chat-header {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 12px 16px;
     background: var(--bg2);
     border-bottom: 1px solid var(--border);
@@ -382,17 +384,28 @@
     gap: 12px;
     flex: 1;
   }
-  .chat-header-info { flex: 1; min-width: 0; }
+  .chat-header-info {
+    flex: 1;
+    min-width: 0;
+  }
   .chat-header-title {
-    font-weight: 600; font-size: 0.9rem; color: var(--text);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
   }
-  .chat-header-sub { font-size: 0.65rem; color: var(--text3); margin-top: 2px; }
+  .chat-header-sub {
+    font-size: 0.65rem;
+    color: var(--text3);
+    margin-top: 2px;
+  }
   .online-dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     background: var(--success);
     flex-shrink: 0;
   }
@@ -413,18 +426,32 @@
 
   /* PIN BAR */
   .pin-bar {
-    display: none; background: var(--pin-color); border-bottom: 1px solid var(--pin-border);
+    display: none;
+    background: var(--pin-color);
+    border-bottom: 1px solid var(--pin-border);
     padding: 6px 12px;
-    flex-direction: row; align-items: center; gap: 8px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
     flex-shrink: 0;
     font-size: 0.7rem;
   }
   .pin-bar.has-pin { display: flex; }
   .pin-bar-icon { color: var(--warning); font-size: 0.8rem; }
-  .pin-bar-text { flex: 1; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pin-bar-text {
+    flex: 1;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .pin-bar-close {
-    background: none; border: none; color: var(--text3);
-    cursor: pointer; font-size: 1rem; padding: 2px 4px;
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 2px 4px;
   }
 
   /* MESSAGES */
@@ -660,44 +687,9 @@
     font-weight: 500;
   }
 
-  /* CONTEXT MENU */
+  /* CONTEXT MENU - RIMOSSO PER MOBILE, SOSTITUITO DA CESTINO */
   .ctx-menu {
-    position: fixed;
-    z-index: 500;
-    background: var(--bg2);
-    border: 1px solid var(--border2);
-    border-radius: 12px;
-    padding: 6px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    min-width: 150px;
-    animation: ctxAppear 0.15s ease;
     display: none;
-  }
-  .ctx-menu.open { display: block; }
-  @keyframes ctxAppear {
-    from { transform: scale(0.9); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-  }
-  .ctx-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: var(--text2);
-  }
-  .ctx-item:hover {
-    background: var(--glass2);
-    color: var(--text);
-  }
-  .ctx-item.danger { color: var(--danger); }
-  .ctx-item.danger:hover { background: rgba(239,68,68,0.1); }
-  .ctx-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 4px 0;
   }
 
   /* EDIT INPUT */
@@ -1299,17 +1291,25 @@
       <button class="btn-icon" onclick="leaveChat()" title="Back">
         <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
       </button>
+      <!-- CODICE BLU SPOSTATO QUI VICINO AL TASTO HOME -->
+      <span class="code-badge" id="chat-code-badge">000000</span>
       <div class="chat-header-info">
         <div class="chat-header-title">
           <span class="online-dot" id="chat-online-dot"></span>
-          <span id="chat-title">Chat</span>
-          <span class="code-badge" id="chat-code-badge">000000</span>
+          <!-- SCRITTA Chat #000000 RIMOSSA -->
         </div>
         <div class="chat-header-sub" id="chat-header-sub">Waiting for someone...</div>
       </div>
     </div>
     <div class="chat-header-right">
-      <button class="btn-icon" onclick="toggleToolbar()" title="Write">
+      <!-- BOTTONI GIF E ALLEGA SPOSTATI ACCANTO ALLA MATITA -->
+      <button class="btn-icon" onclick="document.getElementById('file-input').click()" title="Allega file">
+        <img src="https://i.ibb.co/fd2xhcgz/sallega.png" alt="allega" style="width:20px;height:20px">
+      </button>
+      <button class="btn-icon" onclick="openGiphyModal()" title="GIF Stickers">
+        <img src="https://i.ibb.co/3yPV742h/sgif.png" alt="gif" style="width:20px;height:20px">
+      </button>
+      <button class="btn-icon" onclick="toggleToolbarAndOpenKeyboard()" title="Write">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
       </button>
       <button class="btn-icon" onclick="showChatInfo()" title="Chat info">
@@ -1318,38 +1318,9 @@
     </div>
   </div>
   
-  <!-- TOOLBAR EMOJI -->
+  <!-- TOOLBAR EMOJI (NON SI APRE PIU CON LA MATITA) -->
   <div id="chat-toolbar" class="chat-toolbar">
-    <div class="toolbar-emoji" onclick="addEmoji('😀')">😀</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😂')">😂</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😍')">😍</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🥰')">🥰</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😎')">😎</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🔥')">🔥</div>
-    <div class="toolbar-emoji" onclick="addEmoji('💯')">💯</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🎉')">🎉</div>
-    <div class="toolbar-emoji" onclick="addEmoji('❤️')">❤️</div>
-    <div class="toolbar-emoji" onclick="addEmoji('👍')">👍</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🙏')">🙏</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🤣')">🤣</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😭')">😭</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😘')">😘</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🥺')">🥺</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😊')">😊</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🤔')">🤔</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😡')">😡</div>
-    <div class="toolbar-emoji" onclick="addEmoji('😱')">😱</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🍕')">🍕</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🎶')">🎶</div>
-    <div class="toolbar-emoji" onclick="addEmoji('⚽')">⚽</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🐱')">🐱</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🐶')">🐶</div>
-    <div class="toolbar-emoji" onclick="addEmoji('⭐')">⭐</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🌟')">🌟</div>
-    <div class="toolbar-emoji" onclick="addEmoji('💀')">💀</div>
-    <div class="toolbar-emoji" onclick="addEmoji('👻')">👻</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🎃')">🎃</div>
-    <div class="toolbar-emoji" onclick="addEmoji('🌈')">🌈</div>
+    <!-- LE EMOJI SONO QUI MA NON VERRANNO MOSTRATE SE NON CON ALTRO BOTTONE -->
   </div>
   
   <div class="pin-bar" id="pin-bar">
@@ -1364,12 +1335,6 @@
       <textarea id="chat-input" placeholder="Message..." rows="1"
         onkeydown="handleInputKey(event)" oninput="autoResize(this); onMessageInput()"></textarea>
       <div class="input-buttons">
-        <button class="btn-icon" onclick="document.getElementById('file-input').click()" title="Allega file">
-          <img src="https://i.ibb.co/fd2xhcgz/sallega.png" alt="allega" style="width:20px;height:20px">
-        </button>
-        <button class="btn-icon" onclick="openGiphyModal()" title="GIF Stickers">
-          <img src="https://i.ibb.co/3yPV742h/sgif.png" alt="gif" style="width:20px;height:20px">
-        </button>
         <button class="send-btn" onclick="sendMessage()" title="Send">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -1690,26 +1655,7 @@
   </div>
 </div>
 
-<!-- CONTEXT MENU -->
-<div class="ctx-menu" id="ctx-menu">
-  <div class="ctx-item" onclick="ctxAction('copy')">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-    Copy Message
-  </div>
-  <div class="ctx-item" onclick="ctxAction('pin')">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"/></svg>
-    Pin Message
-  </div>
-  <div class="ctx-item" onclick="ctxAction('edit')" id="ctx-edit">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-    Edit Message
-  </div>
-  <div class="ctx-divider"></div>
-  <div class="ctx-item danger" onclick="ctxAction('delete')">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-    Delete Message
-  </div>
-</div>
+<!-- CONTEXT MENU - RIMOSSO PER MOBILE, SOSTITUITO DA CESTINO NEI MESSAGGI -->
 
 <div id="toast"></div>
 
@@ -1754,10 +1700,13 @@ function toggleZoom(e) {
 }
 
 // ============ TOOLBAR ============
-function toggleToolbar() {
-  const toolbar = document.getElementById('chat-toolbar');
-  if (toolbar) {
-    toolbar.classList.toggle('active');
+// NUOVA FUNZIONE: apre solo la tastiera, NON le emoji
+function toggleToolbarAndOpenKeyboard() {
+  const input = document.getElementById('chat-input');
+  if (input) {
+    input.focus();
+    // Su alcuni browser mobile serve anche click
+    input.click();
   }
 }
 
@@ -2321,7 +2270,6 @@ function enterChat(code, isCreator) {
   saveState();
   state.currentChat = code;
 
-  document.getElementById('chat-title').textContent = 'Chat #' + code;
   document.getElementById('chat-code-badge').textContent = code;
   const subEl = document.getElementById('chat-header-sub');
 
@@ -2430,7 +2378,10 @@ function buildMsgEl(msg) {
             <button class="btn btn-xs btn-ghost" onclick="cancelEdit('${msg.id}')">Cancel</button>
           </div>
         </div>
-        <button class="msg-actions-btn" onclick="openCtxMenu(event, '${msg.id}')" title="More options">⋯</button>
+        <!-- PULSANTE CESTINO PER ELIMINARE (SOLO PER I PROPRI MESSAGGI) -->
+        ${isOwn ? `<button class="msg-delete-btn" onclick="deleteOwnMessage('${msg.id}')" title="Delete message">
+          <img src="https://i.ibb.co/8LgTNpvH/12461936.png" alt="delete" style="width:20px;height:20px">
+        </button>` : ''}
       </div>
       <div class="msg-meta">
         <span class="msg-time">${time}</span>
@@ -2440,6 +2391,26 @@ function buildMsgEl(msg) {
   `;
 
   return wrap;
+}
+
+// NUOVA FUNZIONE PER ELIMINARE I PROPRI MESSAGGI (CON CESTINO)
+function deleteOwnMessage(msgId) {
+  if (!state.currentChat) return;
+  const chat = state.chats[state.currentChat];
+  const msg = chat?.messages.find(m => m.id === msgId);
+  if (!msg) return;
+  if (msg.sender !== state.username) {
+    showToast('You can only delete your own messages', 'error');
+    return;
+  }
+  if (confirm('Delete this message?')) {
+    msg.deleted = true;
+    msg.text = '[deleted]';
+    saveState();
+    renderMessages();
+    showToast('Message deleted', 'success');
+    if (socket) socket.emit('delete message', { chatCode: state.currentChat, messageId: msg.id, username: state.username });
+  }
 }
 
 function escHtml(str) {
@@ -2496,76 +2467,7 @@ function autoResize(el) {
   el.style.height = Math.min(el.scrollHeight, 100) + 'px';
 }
 
-// ============ CONTEXT MENU ============
-let ctxMsgId = null;
-
-function openCtxMenu(e, msgId) {
-  e.stopPropagation();
-  ctxMsgId = msgId;
-  const chat = state.chats[state.currentChat];
-  const msg = chat?.messages.find(m => m.id === msgId);
-  const isOwn = msg?.sender === state.username;
-
-  const editItem = document.getElementById('ctx-edit');
-  if (editItem) editItem.style.display = (isOwn && !msg?.deleted && msg?.type === 'msg') ? 'flex' : 'none';
-
-  const menu = document.getElementById('ctx-menu');
-  menu.classList.add('open');
-
-  let x = e.clientX, y = e.clientY;
-  const mw = 180, mh = 160;
-  if (x + mw > window.innerWidth) x = window.innerWidth - mw - 8;
-  if (y + mh > window.innerHeight) y = y - mh - 4;
-
-  menu.style.left = x + 'px';
-  menu.style.top = y + 'px';
-}
-
-function closeCtxMenu() {
-  document.getElementById('ctx-menu').classList.remove('open');
-}
-
-document.addEventListener('click', closeCtxMenu);
-
-function ctxAction(action) {
-  closeCtxMenu();
-  if (!ctxMsgId || !state.currentChat) return;
-  const chat = state.chats[state.currentChat];
-  const msg = chat?.messages.find(m => m.id === ctxMsgId);
-  if (!msg) return;
-
-  if (action === 'copy') {
-    navigator.clipboard.writeText(msg.text || '').then(() => showToast('Message copied!', 'success'));
-  }
-  else if (action === 'pin') {
-    if (state.pinnedMsg === msg.id) {
-      state.pinnedMsg = null;
-      chat.pinnedMsg = null;
-      showToast('Message unpinned');
-    } else {
-      state.pinnedMsg = msg.id;
-      chat.pinnedMsg = msg.id;
-      showToast('Message pinned!', 'success');
-    }
-    saveState();
-    updatePinBar();
-    renderMessages();
-  }
-  else if (action === 'edit') {
-    if (msg.deleted || msg.sender !== state.username || msg.type !== 'msg') return;
-    startEdit(msg.id);
-  }
-  else if (action === 'delete') {
-    if (!msg.originalText) msg.originalText = msg.text;
-    msg.history = msg.history || [];
-    msg.history.push({ type: 'deleted', text: msg.text, time: Date.now() });
-    msg.deleted = true;
-    saveState();
-    renderMessages();
-    showToast('Message deleted', 'success');
-  }
-}
-
+// ============ EDIT MESSAGE (SOLO TESTO) ============
 function startEdit(msgId) {
   const chat = state.chats[state.currentChat];
   const msg = chat?.messages.find(m => m.id === msgId);
@@ -2613,6 +2515,7 @@ function saveEdit(msgId) {
   saveState();
   renderMessages();
   showToast('Message edited', 'success');
+  if (socket) socket.emit('edit message', { chatCode: state.currentChat, messageId: msgId, newText, username: state.username });
 }
 
 function cancelEdit(msgId) {
@@ -2907,6 +2810,40 @@ function scrollToBottom() {
   const container = document.getElementById('chat-messages');
   if (container) container.scrollTop = container.scrollHeight;
 }
+
+// Aggiungi stile per il pulsante cestino
+const style = document.createElement('style');
+style.textContent = `
+  .msg-delete-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-left: 4px;
+  }
+  .msg-delete-btn img {
+    width: 18px;
+    height: 18px;
+  }
+  .msg-bubble-row:hover .msg-delete-btn,
+  .msg-delete-btn.active {
+    opacity: 1;
+  }
+  @media (max-width: 768px) {
+    .msg-delete-btn {
+      opacity: 1;
+    }
+  }
+`;
+document.head.appendChild(style);
 
 // ============ START ============
 init();
