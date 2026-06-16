@@ -1,176 +1,178 @@
-const socket = io();
+const express = require('express');
+const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
-let currentUsername = null;
-let messageSound = new Audio('/notification.mp3'); // Optional
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// DOM elements - usa gli ID che già hai nel tuo HTML
-const loginScreen = document.getElementById('login-screen');
-const chatScreen = document.getElementById('chat-screen');
-const usernameInput = document.getElementById('username-input');
-const loginBtn = document.getElementById('login-btn');
-const messageInput = document.getElementById('message-input');
-const sendBtn = document.getElementById('send-btn');
-const messagesDiv = document.getElementById('messages');
-const usersList = document.getElementById('users-list');
-const typingIndicator = document.getElementById('typing-indicator');
-const onlineCount = document.getElementById('online-count');
-const currentUserSpan = document.getElementById('current-user');
+// Middleware
+app.use(express.json());
+app.use(express.static('public'));
 
-let typingTimeout = null;
+// Inizializza Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Login
-loginBtn.addEventListener('click', () => {
-  const username = usernameInput.value.trim();
-  if (username.length < 2) {
-    alert('Il nome utente deve avere almeno 2 caratteri');
-    return;
-  }
+// ============ API ROUTES ============
+
+// Crea una nuova chat
+app.post('/api/chat/create', async (req, res) => {
+  const { code, username, created_at } = req.body;
   
-  currentUsername = username;
-  currentUserSpan.textContent = username;
-  socket.emit('user join', username);
-  
-  loginScreen.style.display = 'none';
-  chatScreen.style.display = 'flex';
-  messageInput.focus();
-});
-
-// Press Enter to login
-usernameInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') loginBtn.click();
-});
-
-// Send message
-function sendMessage() {
-  const text = messageInput.value.trim();
-  if (!text) return;
-  
-  socket.emit('chat message', {
-    username: currentUsername,
-    text: text
-  });
-  
-  messageInput.value = '';
-  messageInput.focus();
-}
-
-sendBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
-});
-
-// Typing indicator
-messageInput.addEventListener('input', () => {
-  socket.emit('typing', currentUsername);
-  
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(() => {
-    socket.emit('stop typing');
-  }, 1000);
-});
-
-// Receive chat history
-socket.on('chat history', (messages) => {
-  messagesDiv.innerHTML = '';
-  messages.forEach(msg => addMessageToDOM(msg.username, msg.text, msg.timestamp, msg.username === currentUsername));
-  scrollToBottom();
-});
-
-// Receive new message
-socket.on('chat message', (data) => {
-  addMessageToDOM(data.username, data.text, data.timestamp, data.username === currentUsername);
-  if (data.username !== currentUsername) {
-    messageSound.play().catch(e => console.log('Audio play failed'));
-  }
-  scrollToBottom();
-});
-
-// System messages (user joined/left)
-socket.on('system message', (data) => {
-  addSystemMessage(data.text);
-  scrollToBottom();
-});
-
-// Update users list
-socket.on('users list', (users) => {
-  updateUsersList(users);
-  onlineCount.textContent = users.length;
-});
-
-// Typing indicator
-socket.on('user typing', (username) => {
-  if (username !== currentUsername) {
-    typingIndicator.textContent = `${username} sta scrivendo...`;
-    typingIndicator.style.display = 'block';
+  try {
+    // Verifica se il codice esiste già
+    const { data: existing } = await supabase
+      .from('chats')
+      .select('code')
+      .eq('code', code)
+      .single();
     
-    setTimeout(() => {
-      if (typingIndicator.textContent === `${username} sta scrivendo...`) {
-        typingIndicator.style.display = 'none';
-      }
-    }, 2000);
+    if (existing) {
+      return res.status(400).json({ error: 'Code already exists' });
+    }
+    
+    // Inserisci la nuova chat
+    const { data, error } = await supabase
+      .from('chats')
+      .insert([
+        { 
+          code: code, 
+          created_at: created_at, 
+          activated: false, 
+          users: [username],
+          pinned_msg_id: null
+        }
+      ])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({ success: true, chat: data });
+  } catch (err) {
+    console.error('Create chat error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-socket.on('user stop typing', () => {
-  typingIndicator.style.display = 'none';
+// Unisciti a una chat
+app.post('/api/chat/join', async (req, res) => {
+  const { code, username } = req.body;
+  
+  try {
+    // Recupera la chat
+    const { data: chat, error: fetchError } = await supabase
+      .from('chats')
+      .select('*')
+      .eq('code', code)
+      .single();
+    
+    if (fetchError || !chat) {
+      return res.status(404).json({ error: 'Code not found' });
+    }
+    
+    // Verifica scadenza (24 ore se non attivata)
+    const age = Date.now() - chat.created_at;
+    if (!chat.activated && age > 24 * 60 * 60 * 1000) {
+      return res.status(410).json({ error: 'Code expired' });
+    }
+    
+    // Aggiungi utente se non presente
+    let users = chat.users || [];
+    if (!users.includes(username)) {
+      users.push(username);
+    }
+    
+    // Attiva se almeno 2 utenti
+    const activated = chat.activated || (users.length >= 2);
+    
+    // Aggiorna la chat
+    const { data: updatedChat, error: updateError } = await supabase
+      .from('chats')
+      .update({ 
+        users: users, 
+        activated: activated 
+      })
+      .eq('code', code)
+      .select()
+      .single();
+    
+    if (updateError) throw updateError;
+    
+    res.json({ success: true, chat: updatedChat });
+  } catch (err) {
+    console.error('Join chat error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Error handling
-socket.on('error', (data) => {
-  console.error('Socket error:', data);
-  alert('Errore: ' + data.message);
+// Elimina una chat (solo il creatore)
+app.delete('/api/chat/:code', async (req, res) => {
+  const { code } = req.params;
+  const { username } = req.body;
+  
+  try {
+    // Recupera la chat
+    const { data: chat, error: fetchError } = await supabase
+      .from('chats')
+      .select('*')
+      .eq('code', code)
+      .single();
+    
+    if (fetchError || !chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    // Verifica che l'utente sia il creatore (primo utente nella lista)
+    const isOwner = chat.users && chat.users[0] === username;
+    if (!isOwner) {
+      return res.status(403).json({ error: 'Only chat creator can delete this chat' });
+    }
+    
+    // Elimina la chat (i messaggi verranno eliminati in cascata)
+    const { error: deleteError } = await supabase
+      .from('chats')
+      .delete()
+      .eq('code', code);
+    
+    if (deleteError) throw deleteError;
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete chat error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Helper functions
-function addMessageToDOM(username, text, timestamp, isCurrentUser) {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `message ${isCurrentUser ? 'message-out' : 'message-in'}`;
+// Recupera i messaggi di una chat
+app.get('/api/messages/:code', async (req, res) => {
+  const { code } = req.params;
   
-  const time = new Date(timestamp).toLocaleTimeString();
-  
-  messageDiv.innerHTML = `
-    <div class="message-header">
-      <strong>${escapeHtml(username)}</strong>
-      <small>${time}</small>
-    </div>
-    <div class="message-text">${escapeHtml(text)}</div>
-  `;
-  
-  messagesDiv.appendChild(messageDiv);
-}
+  try {
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_code', code)
+      .order('time', { ascending: true });
+    
+    if (error) throw error;
+    
+    res.json(messages);
+  } catch (err) {
+    console.error('Get messages error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-function addSystemMessage(text) {
-  const systemDiv = document.createElement('div');
-  systemDiv.className = 'system-message';
-  systemDiv.textContent = text;
-  messagesDiv.appendChild(systemDiv);
-}
+// Rotta per servire il frontend
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-function updateUsersList(users) {
-  usersList.innerHTML = '';
-  users.forEach(user => {
-    const li = document.createElement('li');
-    li.className = 'user-item';
-    li.innerHTML = `
-      <span class="user-status online"></span>
-      <span>${escapeHtml(user.username)}</span>
-    `;
-    usersList.appendChild(li);
-  });
-}
-
-function scrollToBottom() {
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// Make sure your chat screen starts hidden
-window.addEventListener('load', () => {
-  chatScreen.style.display = 'none';
-  console.log('ChatCaj ready!');
+// Avvia il server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📍 http://localhost:${PORT}`);
 });
