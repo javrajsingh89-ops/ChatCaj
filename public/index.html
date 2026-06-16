@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
 <title>ChatCaj — Private Chats</title>
-<script src="/socket.io/socket.io.js"></script>
+<!-- Supabase Client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Google AdSense -->
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4645398885593855" crossorigin="anonymous"></script>
 <style>
@@ -40,7 +41,7 @@
     --warning: #f59e0b;
   }
 
-  /* THEMES */
+  /* THEMES - Tutti i 10 temi */
   [data-theme="neon-purple"] {
     --bg: #0d0b14; --bg2: #13102a; --bg3: #1a1635; --bg4: #201d3e;
     --accent: #a855f7; --accent2: #c084fc; --accent-glow: rgba(168,85,247,0.3);
@@ -167,9 +168,7 @@
     flex-wrap: wrap;
     overflow-x: auto;
   }
-  .chat-toolbar.active {
-    display: flex;
-  }
+  .chat-toolbar.active { display: flex; }
   .toolbar-emoji {
     font-size: 1.5rem;
     background: var(--glass);
@@ -183,9 +182,7 @@
     cursor: pointer;
     transition: transform 0.1s;
   }
-  .toolbar-emoji:active {
-    transform: scale(0.95);
-  }
+  .toolbar-emoji:active { transform: scale(0.95); }
 
   /* GLASS PANEL */
   .glass-panel {
@@ -1660,6 +1657,10 @@
 <div id="toast"></div>
 
 <script>
+// ============ SUPABASE CONFIGURATION ============
+const SUPABASE_URL = 'https://tuoprogetto.supabase.co'; // SOSTITUISCI CON LA TUA URL
+const SUPABASE_ANON_KEY = 'tua_chiave_anon'; // SOSTITUISCI CON LA TUA CHIAVE
+
 // ============ STATE ============
 let state = {
   username: '',
@@ -1670,8 +1671,9 @@ let state = {
   ctxMsgId: null
 };
 
-// ============ SOCKET.IO ============
-let socket = null;
+// ============ SUPABASE CLIENT ============
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabaseChannel = null;
 
 // ============ GIPHY ============
 const GIPHY_API_KEY = 'nQZpPuDPbkDrDOKgjfFxNVApiC63OxyN';
@@ -1700,12 +1702,10 @@ function toggleZoom(e) {
 }
 
 // ============ TOOLBAR ============
-// NUOVA FUNZIONE: apre solo la tastiera, NON le emoji
 function toggleToolbarAndOpenKeyboard() {
   const input = document.getElementById('chat-input');
   if (input) {
     input.focus();
-    // Su alcuni browser mobile serve anche click
     input.click();
   }
 }
@@ -2022,10 +2022,7 @@ function sendSticker(imageUrl) {
     deleted: false
   };
   
-  if (socket && state.currentChat) {
-    socket.emit('new message', { chatCode: state.currentChat, message: msg });
-    showToast('GIF sent!', 'success');
-  }
+  sendMessageToSupabase(msg);
   closeModal('modal-giphy');
 }
 
@@ -2077,10 +2074,8 @@ function sendFile(input) {
           deleted: false
         };
         
-        if (socket && state.currentChat) {
-          socket.emit('new message', { chatCode: state.currentChat, message: msg });
-          showToast('✅ Image sent!', 'success');
-        }
+        sendMessageToSupabase(msg);
+        showToast('✅ Image sent!', 'success');
       };
       img.src = e.target.result;
     } else {
@@ -2096,10 +2091,8 @@ function sendFile(input) {
         deleted: false
       };
       
-      if (socket && state.currentChat) {
-        socket.emit('new message', { chatCode: state.currentChat, message: msg });
-        showToast('📎 File sent!', 'success');
-      }
+      sendMessageToSupabase(msg);
+      showToast('📎 File sent!', 'success');
     }
   };
   reader.onerror = function() {
@@ -2107,6 +2100,56 @@ function sendFile(input) {
   };
   reader.readAsDataURL(file);
   input.value = '';
+}
+
+// ============ SUPABASE MESSAGE FUNCTIONS ============
+async function sendMessageToSupabase(message) {
+  if (!state.currentChat) return;
+  
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert([
+        {
+          id: message.id,
+          chat_code: state.currentChat,
+          type: message.type || 'msg',
+          sender: message.sender,
+          text: message.text,
+          time: message.time || Date.now(),
+          edited: false,
+          deleted: false
+        }
+      ]);
+    
+    if (error) {
+      console.error('Supabase insert error:', error);
+      showToast('Error sending message', 'error');
+    }
+  } catch (err) {
+    console.error('Send message error:', err);
+    showToast('Error sending message', 'error');
+  }
+}
+
+async function loadMessagesFromSupabase(code) {
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_code', code)
+      .order('time', { ascending: true });
+    
+    if (error) {
+      console.error('Load messages error:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error('Load messages error:', err);
+    return [];
+  }
 }
 
 // ============ AVATAR FUNCTIONS ============
@@ -2117,144 +2160,78 @@ function getAvatarColor(username) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// ============ SOCKET.IO CONNECTION ============
-function connectToChatRoom(code) {
-  if (socket) {
-    socket.disconnect();
+function msgId() {
+  return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+}
+
+// ============ SUPABASE REALTIME ============
+function subscribeToChat(code) {
+  // Unsubscribe from previous channel
+  if (supabaseChannel) {
+    supabaseChannel.unsubscribe();
+    supabaseChannel = null;
   }
   
-  socket = io();
-  
-  socket.emit('join chat', { 
-    code: code, 
-    username: state.username 
-  });
-  
-  socket.on('chat history', (messages) => {
-    const chat = state.chats[code];
-    if (chat) {
-      chat.messages = messages;
-      saveState();
-      renderMessages();
-      scrollToBottom();
-    }
-  });
-  
-  socket.on('message received', (message) => {
-    const chat = state.chats[code];
-    if (chat && state.currentChat === code) {
-      chat.messages.push(message);
-      saveState();
-      renderMessages();
-      scrollToBottom();
-    } else if (chat) {
-      chat.messages.push(message);
-      saveState();
-    }
-  });
-  
-  socket.on('message edited', ({ messageId, newText, username }) => {
-    const chat = state.chats[code];
-    if (chat) {
-      const msg = chat.messages.find(m => m.id === messageId);
-      if (msg) {
-        msg.text = newText;
-        msg.edited = true;
-        saveState();
-        if (state.currentChat === code) {
+  // Create new channel
+  supabaseChannel = supabase
+    .channel(`chat:${code}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'messages',
+      filter: `chat_code=eq.${code}`
+    }, (payload) => {
+      const newMessage = payload.new;
+      // Aggiungi il messaggio alla chat locale
+      const chat = state.chats[code];
+      if (chat && state.currentChat === code) {
+        // Verifica che il messaggio non sia già presente (evita duplicati)
+        if (!chat.messages.find(m => m.id === newMessage.id)) {
+          chat.messages.push(newMessage);
+          saveState();
           renderMessages();
+          scrollToBottom();
+        }
+      } else if (chat) {
+        if (!chat.messages.find(m => m.id === newMessage.id)) {
+          chat.messages.push(newMessage);
+          saveState();
         }
       }
-    }
-  });
-  
-  socket.on('message deleted', ({ messageId, username }) => {
-    const chat = state.chats[code];
-    if (chat) {
-      const msg = chat.messages.find(m => m.id === messageId);
-      if (msg) {
-        msg.deleted = true;
-        msg.text = '[deleted]';
-        saveState();
-        if (state.currentChat === code) {
-          renderMessages();
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'messages'
+    }, (payload) => {
+      const updatedMessage = payload.new;
+      const chat = state.chats[code];
+      if (chat) {
+        const index = chat.messages.findIndex(m => m.id === updatedMessage.id);
+        if (index !== -1) {
+          chat.messages[index] = updatedMessage;
+          saveState();
+          if (state.currentChat === code) {
+            renderMessages();
+          }
         }
       }
-    }
-  });
-  
-  socket.on('users update', (users) => {
-    const chat = state.chats[code];
-    if (chat) {
-      chat.users = users;
-      saveState();
-      if (state.currentChat === code) {
-        renderUsersBar();
-        const subEl = document.getElementById('chat-header-sub');
-        if (subEl) {
-          subEl.textContent = users.length + ' member' + (users.length !== 1 ? 's' : '');
-        }
+    })
+    .subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Subscribed to chat:', code);
       }
-    }
-  });
-  
-  socket.on('user joined', (username) => {
-    if (username !== state.username) {
-      addSystemMsg(code, username + ' joined the chat.');
-    }
-  });
-  
-  socket.on('user left', (username) => {
-    addSystemMsg(code, username + ' left the chat.');
-  });
-  
-  socket.on('user typing', (username) => {
-    if (username !== state.username) {
-      showTypingIndicator(username);
-    }
-  });
-  
-  socket.on('user stop typing', () => {
-    hideTypingIndicator();
-  });
-}
-
-function showTypingIndicator(username) {
-  let indicator = document.getElementById('typing-indicator');
-  if (!indicator) {
-    indicator = document.createElement('div');
-    indicator.id = 'typing-indicator';
-    indicator.style.cssText = 'text-align:center;font-size:0.75rem;color:var(--text3);padding:6px 0;font-style:italic;';
-    const messagesContainer = document.getElementById('chat-messages');
-    if (messagesContainer) messagesContainer.appendChild(indicator);
-  }
-  indicator.textContent = username + ' is typing...';
-  indicator.style.display = 'block';
-}
-
-function hideTypingIndicator() {
-  const indicator = document.getElementById('typing-indicator');
-  if (indicator) indicator.style.display = 'none';
-}
-
-function onMessageInput() {
-  if (socket && state.currentChat) {
-    socket.emit('typing', { 
-      chatCode: state.currentChat, 
-      username: state.username 
+      if (err) {
+        console.error('Subscription error:', err);
+      }
     });
-    
-    clearTimeout(window.typingTimeout);
-    window.typingTimeout = setTimeout(() => {
-      if (socket && state.currentChat) {
-        socket.emit('stop typing', { chatCode: state.currentChat });
-      }
-    }, 1000);
-  }
 }
+
+// ============ SOCKET.IO CONNECTION (RIMOSSO - SOSTITUITO DA SUPABASE REALTIME) ============
+// La funzione connectToChatRoom è stata sostituita da subscribeToChat + loadMessagesFromSupabase
 
 // ============ ENTER CHAT ============
-function enterChat(code, isCreator) {
+async function enterChat(code, isCreator) {
   closeModal('modal-new-chat');
   const chat = state.chats[code];
   if (!chat) return;
@@ -2282,6 +2259,11 @@ function enterChat(code, isCreator) {
   state.pinnedMsg = chat.pinnedMsg || null;
   updatePinBar();
   renderUsersBar();
+  
+  // Carica i messaggi da Supabase
+  const messages = await loadMessagesFromSupabase(code);
+  chat.messages = messages;
+  saveState();
   renderMessages();
 
   if (isCreator && chat.messages.length === 0) {
@@ -2292,21 +2274,34 @@ function enterChat(code, isCreator) {
     renderMessages();
   }
 
-  connectToChatRoom(code);
+  // Iscriviti al canale Realtime per questa chat
+  subscribeToChat(code);
+  
   showScreen('chat');
 }
 
 function addSystemMsg(code, text) {
   const chat = state.chats[code];
   if (!chat) return;
-  chat.messages.push({ id: msgId(), type: 'system', text, time: Date.now() });
+  const msg = { id: msgId(), type: 'system', text, time: Date.now() };
+  chat.messages.push(msg);
+  // Salva il messaggio di sistema su Supabase
+  supabase
+    .from('messages')
+    .insert([{
+      id: msg.id,
+      chat_code: code,
+      type: 'system',
+      sender: 'system',
+      text: text,
+      time: msg.time
+    }])
+    .then(({ error }) => {
+      if (error) console.error('Error saving system message:', error);
+    });
 }
 
 // ============ MESSAGES ============
-function msgId() {
-  return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-}
-
 function renderMessages() {
   const chat = state.chats[state.currentChat];
   if (!chat) return;
@@ -2378,7 +2373,6 @@ function buildMsgEl(msg) {
             <button class="btn btn-xs btn-ghost" onclick="cancelEdit('${msg.id}')">Cancel</button>
           </div>
         </div>
-        <!-- PULSANTE CESTINO PER ELIMINARE (SOLO PER I PROPRI MESSAGGI) -->
         ${isOwn ? `<button class="msg-delete-btn" onclick="deleteOwnMessage('${msg.id}')" title="Delete message">
           <img src="https://i.ibb.co/8LgTNpvH/12461936.png" alt="delete" style="width:20px;height:20px">
         </button>` : ''}
@@ -2393,7 +2387,6 @@ function buildMsgEl(msg) {
   return wrap;
 }
 
-// NUOVA FUNZIONE PER ELIMINARE I PROPRI MESSAGGI (CON CESTINO)
 function deleteOwnMessage(msgId) {
   if (!state.currentChat) return;
   const chat = state.chats[state.currentChat];
@@ -2403,13 +2396,29 @@ function deleteOwnMessage(msgId) {
     showToast('You can only delete your own messages', 'error');
     return;
   }
+  
   if (confirm('Delete this message?')) {
-    msg.deleted = true;
-    msg.text = '[deleted]';
-    saveState();
-    renderMessages();
-    showToast('Message deleted', 'success');
-    if (socket) socket.emit('delete message', { chatCode: state.currentChat, messageId: msg.id, username: state.username });
+    // Aggiorna su Supabase
+    supabase
+      .from('messages')
+      .update({
+        deleted: true,
+        text: '[deleted]'
+      })
+      .eq('id', msgId)
+      .then(({ error }) => {
+        if (error) {
+          console.error('Delete message error:', error);
+          showToast('Error deleting message', 'error');
+        } else {
+          // Aggiorna localmente
+          msg.deleted = true;
+          msg.text = '[deleted]';
+          saveState();
+          renderMessages();
+          showToast('Message deleted', 'success');
+        }
+      });
   }
 }
 
@@ -2440,19 +2449,10 @@ function sendMessage() {
     history: []
   };
   
-  if (socket && state.currentChat) {
-    socket.emit('new message', { 
-      chatCode: state.currentChat, 
-      message: msg 
-    });
-  }
+  sendMessageToSupabase(msg);
   
   input.value = '';
   input.style.height = 'auto';
-  
-  if (socket) {
-    socket.emit('stop typing', { chatCode: state.currentChat });
-  }
 }
 
 function handleInputKey(e) {
@@ -2467,7 +2467,7 @@ function autoResize(el) {
   el.style.height = Math.min(el.scrollHeight, 100) + 'px';
 }
 
-// ============ EDIT MESSAGE (SOLO TESTO) ============
+// ============ EDIT MESSAGE ============
 function startEdit(msgId) {
   const chat = state.chats[state.currentChat];
   const msg = chat?.messages.find(m => m.id === msgId);
@@ -2512,10 +2512,26 @@ function saveEdit(msgId) {
   if (areaEl) areaEl.style.display = 'none';
   if (btnsEl) btnsEl.style.display = 'none';
 
-  saveState();
-  renderMessages();
-  showToast('Message edited', 'success');
-  if (socket) socket.emit('edit message', { chatCode: state.currentChat, messageId: msgId, newText, username: state.username });
+  // Aggiorna su Supabase
+  supabase
+    .from('messages')
+    .update({
+      text: newText,
+      edited: true,
+      original_text: msg.originalText,
+      history: msg.history
+    })
+    .eq('id', msgId)
+    .then(({ error }) => {
+      if (error) {
+        console.error('Edit message error:', error);
+        showToast('Error editing message', 'error');
+      } else {
+        saveState();
+        renderMessages();
+        showToast('Message edited', 'success');
+      }
+    });
 }
 
 function cancelEdit(msgId) {
@@ -2571,6 +2587,11 @@ function renderUsersBar() {
 
 // ============ LEAVE CHAT ============
 function leaveChat() {
+  // Unsubscribe from Supabase channel
+  if (supabaseChannel) {
+    supabaseChannel.unsubscribe();
+    supabaseChannel = null;
+  }
   state.currentChat = null;
   state.pinnedMsg = null;
   showScreen('home');
@@ -2598,6 +2619,11 @@ function deleteCurrentChat() {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
+        // Unsubscribe from channel
+        if (supabaseChannel) {
+          supabaseChannel.unsubscribe();
+          supabaseChannel = null;
+        }
         delete state.chats[state.currentChat];
         saveState();
         state.currentChat = null;
@@ -2811,7 +2837,12 @@ function scrollToBottom() {
   if (container) container.scrollTop = container.scrollHeight;
 }
 
-// Aggiungi stile per il pulsante cestino
+function onMessageInput() {
+  // Non più necessario per socket.io, ma mantenuto per compatibilità
+  // Il typing sarà gestito da Supabase in futuro se necessario
+}
+
+// ============ STYLE FOR DELETE BUTTON ============
 const style = document.createElement('style');
 style.textContent = `
   .msg-delete-btn {
